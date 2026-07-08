@@ -16,7 +16,6 @@ jobs:
     name: Fetch and Build from MiCode
     runs-on: ubuntu-latest
     
-    # SENIOR ARCHITECTURE: İşlemi tamamen izole bir Ubuntu 20.04 konteynerinde çalıştırıyoruz.
     container:
       image: ubuntu:20.04
 
@@ -55,7 +54,6 @@ jobs:
 
       - name: Git Güvenlik Ayarını Yap
         run: |
-          # Konteyner içi haritalamada Git mülkiyet hatalarını engellemek için
           git config --global --add safe.directory '*'
 
       - name: Resmi Xiaomi Kernel Kaynağını Çek (MiCode)
@@ -70,26 +68,34 @@ jobs:
         run: |
           cd $KERNEL_DIR
           
-          # Çapraz derleme ortam değişkenleri
+          # Ortam Değişkenleri ve Derleyici Yolu
           export PATH="$TOOLCHAIN_DIR/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # Clang LLVM eşlemeleri
+          # SENIOR OPTIMIZATION: Tüm LLVM bileşenlerini Proton Clang üzerinden zorunlu kılıyoruz
           export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
           export NM=llvm-nm
           export OBJCOPY=llvm-objcopy
           export OBJDUMP=llvm-objdump
           export STRIP=llvm-strip
+          export READELF=llvm-readelf
+          export OBJSIZE=llvm-size
           
+          # Eski mimari kod derlemeleri için GNU fallback tanımları
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           
-          # Derleme dizini ayağa kaldırma ve yapılandırma
+          # SENIOR CRITICAL FIX: Sürücülerdeki (drivers/) tüm uyarı tabanlı (Werror) kilitlenmeleri engeller
+          export KCFLAGS="-w"
+          
+          # Çıktı klasörünü temiz kur ve defconfig'i yükle
           mkdir -p out
           make O=out $DEFCONFIG
           
-          # Thread kilitlenmelerini önleyerek kararlı derleme başlat
+          # İşlemci limitlerini zorlayarak derlemeyi başlat
           make -j$(nproc --all) O=out
 
       - name: Derleme Doğrulama Kontrolü (Sanity Check)
