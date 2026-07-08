@@ -51,9 +51,13 @@ jobs:
         run: |
           git clone --depth=1 $XIAOMI_REPO -b $XIAOMI_BRANCH $KERNEL_DIR
 
-      - name: Proton Clang Toolchain İndir
+      - name: Proton Clang Toolchain İndir ve Glibc Fix Uygula
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $TOOLCHAIN_DIR
+          
+          # KRİTİK FİX: Modern Ubuntu (glibc) üzerinde fixdep / hostcc hatalarını engellemek için
+          # Proton Clang'in eski host linker'ını siliyoruz. Sistem yerel /usr/bin/ld'yi kullanacak.
+          rm -f $TOOLCHAIN_DIR/bin/ld
 
       - name: Resmi Kerneli Derle
         run: |
@@ -71,7 +75,7 @@ jobs:
           export OBJDUMP=llvm-objdump
           export STRIP=llvm-strip
           
-          # 4.14 inline-assembly ve vdso işlemleri için GNU assembler referansları
+          # GNU assembler referansları
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           
