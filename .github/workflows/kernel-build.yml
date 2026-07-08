@@ -1,0 +1,56 @@
+name: Build Biloba Kernel 4.14.186
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_REPO:
+        description: 'Kernel Kaynak Kodu URL (Örn: kendi repon)'
+        required: true
+        default: 'https://github.com/kullaniciadi/biloba-r-oss.git'
+      KERNEL_BRANCH:
+        description: 'Derlenecek Branch'
+        required: true
+        default: '4.14.186'
+
+jobs:
+  build-kernel:
+    name: Kernel Derleme
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Bağımlılıkları Kur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git cpio bc bison build-essential curl flex libelf-dev libssl-dev wget python3 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: Kernel Kaynağını Çek
+        run: |
+          git clone --depth=1 ${{ github.event.inputs.KERNEL_REPO }} -b ${{ github.event.inputs.KERNEL_BRANCH }} kernel-source
+
+      - name: Kerneli Derle
+        working-directory: kernel-source
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          # Defconfig ayarı (biloba için kendi defconfig dosyanın adını buraya yazmalısın)
+          make O=out ARCH=arm64 biloba_defconfig
+
+          # Çekirdek sayısına göre hızlı derleme işlemi
+          make -j$(nproc --all) O=out ARCH=arm64
+
+      - name: Image Dosyasını Yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: biloba-Image
+          path: kernel-source/out/arch/arm64/boot/Image
+
+      - name: DTB Dosyalarını Yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: biloba-dtb
+          path: kernel-source/out/arch/arm64/boot/dts/**/*.dtb
