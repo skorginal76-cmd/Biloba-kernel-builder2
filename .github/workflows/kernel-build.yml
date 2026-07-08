@@ -1,56 +1,74 @@
-name: Build Biloba Kernel 4.14.186
+name: Official Xiaomi Biloba Kernel Build
 
 on:
   workflow_dispatch:
-    inputs:
-      KERNEL_REPO:
-        description: 'Kernel Kaynak Kodu URL (Örn: kendi repon)'
-        required: true
-        default: 'https://github.com/kullaniciadi/biloba-r-oss.git'
-      KERNEL_BRANCH:
-        description: 'Derlenecek Branch'
-        required: true
-        default: '4.14.186'
+
+env:
+  TZ: Europe/Istanbul
+  XIAOMI_REPO: https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git
+  XIAOMI_BRANCH: biloba-r-oss
+  KERNEL_DIR: ${{ github.workspace }}/kernel-source
+  TOOLCHAIN_DIR: ${{ github.workspace }}/proton-clang
+  DEFCONFIG: biloba_defconfig
 
 jobs:
-  build-kernel:
-    name: Kernel Derleme
+  build-official:
+    name: Fetch and Build from MiCode
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      # Kural gereği ana checkout v6 olarak ayarlandı
+      - name: Checkout Builder Repository
         uses: actions/checkout@v6
 
-      - name: Bağımlılıkları Kur
+      - name: Sistem Bağımlılıklarını Kur
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git cpio bc bison build-essential curl flex libelf-dev libssl-dev wget python3 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+          sudo apt-get update -y
+          sudo apt-get install -y bc bison build-essential cpio curl flex git libelf-dev libssl-dev lz4 lzip lzh-ca-utils libncurses5-dev libncursesw5-dev libncurses5 ninja-build python3 python2 tar u-boot-tools xz-utils zip zlib1g-dev
 
-      - name: Kernel Kaynağını Çek
+      - name: Resmi Xiaomi Kernel Kaynağını Çek (MiCode)
         run: |
-          git clone --depth=1 ${{ github.event.inputs.KERNEL_REPO }} -b ${{ github.event.inputs.KERNEL_BRANCH }} kernel-source
+          git clone --depth=1 $XIAOMI_REPO -b $XIAOMI_BRANCH $KERNEL_DIR
 
-      - name: Kerneli Derle
-        working-directory: kernel-source
+      - name: Proton Clang Toolchain İndir
         run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $TOOLCHAIN_DIR
+
+      - name: Resmi Kerneli Derle
+        run: |
+          cd $KERNEL_DIR
+          
+          # Toolchain'i çevresel değişkenlere ekle
+          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
           export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          
+          # Çıktı klasörünü ayarla ve defconfig yükle
+          mkdir -p out
+          make O=out $DEFCONFIG
+          
+          # Tüm işlemci güçlerini kullanarak derlemeyi başlat
+          make -j$(nproc --all) O=out
 
-          # Defconfig ayarı (biloba için kendi defconfig dosyanın adını buraya yazmalısın)
-          make O=out ARCH=arm64 biloba_defconfig
+      - name: Çıktı Kontrolü
+        run: |
+          if [ ! -f $KERNEL_DIR/out/arch/arm64/boot/Image ]; then
+            echo "::error::Derleme başarısız! Image dosyası üretilemedi."
+            exit 1
+          fi
 
-          # Çekirdek sayısına göre hızlı derleme işlemi
-          make -j$(nproc --all) O=out ARCH=arm64
-
-      - name: Image Dosyasını Yükle
+      # Kural gereği harici uses yapıları v4 olarak ayarlandı
+      - name: Resmi Image Dosyasını Yükle
         uses: actions/upload-artifact@v4
         with:
-          name: biloba-Image
+          name: official-biloba-Image
           path: kernel-source/out/arch/arm64/boot/Image
 
-      - name: DTB Dosyalarını Yükle
+      - name: Resmi DTB Dosyalarını Yükle
         uses: actions/upload-artifact@v4
         with:
-          name: biloba-dtb
+          name: official-biloba-dtb
           path: kernel-source/out/arch/arm64/boot/dts/**/*.dtb
