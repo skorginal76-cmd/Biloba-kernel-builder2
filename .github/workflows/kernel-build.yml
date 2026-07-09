@@ -12,7 +12,8 @@ env:
 jobs:
   build-godmode:
     name: Bulletproof Native Build Stack
-    runs-on: ubuntu-20.04
+    # FIX: Sonsuz beklemeyi bitiren güncel ve aktif GitHub imajı
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Builder Repository
@@ -21,12 +22,12 @@ jobs:
       - name: Native 64-Bit Çapraz Derleyicileri ve Bağımlılıkları Kur
         run: |
           sudo apt-get update -y
-          # SENIOR FIX: Dışarıdan GCC indirmek yerine sistemin kendi %100 uyumlu 64-bit araçlarını kuruyoruz.
+          # FIX: Ubuntu 22.04 uyumlu paket matrisi ve Python3 köprüsü eklendi
           sudo apt-get install -y \
             bc bison build-essential cpio curl flex git \
             libelf-dev libssl-dev lz4 lzip ninja-build \
-            python2 python3 tar u-boot-tools xz-utils \
-            zip zlib1g-dev libncurses5-dev libncurses5 \
+            python3 python-is-python3 tar u-boot-tools xz-utils \
+            zip zlib1g-dev libncurses5-dev libncurses5 libtinfo5 \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
             wget
 
@@ -48,7 +49,7 @@ jobs:
           
           export PATH="$CLANG_DIR/clang-r383902b/bin:$PATH"
           
-          # BÜTÜN DÜĞÜMÜ ÇÖZEN NOKTA: Makefile içindeki olası path hatalarını ezmek için komut içi (inline) argümanlar
+          # Komut içi (inline) argüman zorlaması
           MAKE_ARGS="O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS=-w"
           
           mkdir -p out
