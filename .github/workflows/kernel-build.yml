@@ -62,20 +62,20 @@ jobs:
         run: |
           git clone --depth=1 $XIAOMI_REPO -b $XIAOMI_BRANCH $KERNEL_DIR
 
-      - name: Resmi Google AOSP Clang ve GCC 4.9 Toolchainlerini İndir
+      - name: Resmi Google AOSP Clang ve LineageOS GCC Toolchainlerini İndir
         run: |
-          # SENIOR FIX: Kimlik doğrulama hatasını engellemek için doğrudan resmi Google AOSP reposundan Android 11 Clang setini çekiyoruz
+          # Clang için Google AOSP deposu kararlı şekilde iniyor
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
           
-          # Resmi AOSP GCC Linker ve Assembler araçları
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $GCC64_DIR
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 $GCC32_DIR
+          # SENIOR CRITICAL FIX: Google GCC 4.9 ana depolarını boşalttığı için binary'leri eksiksiz barındıran LineageOS mirror'larına geçtik
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git $GCC64_DIR
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git $GCC32_DIR
 
       - name: Orijinal Fabrika Standartlarında Derlemeyi Tetikle
         run: |
           cd $KERNEL_DIR
           
-          # Çekilen resmi AOSP yapısında Clang, r383902b alt klasöründe yer alır. PATH'i buna göre güncelliyoruz.
+          # PATH hiyerarşisi (Artık tüm binary'ler yerli yerinde)
           export PATH="$CLANG_DIR/clang-r383902b/bin:$GCC64_DIR/bin:$GCC32_DIR/bin:/usr/bin:$PATH"
           
           export ARCH=arm64
@@ -87,7 +87,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # Sözdizimi uyarılarını bypass et
+          # Sözdizimi uyarılarını sustur
           export KCFLAGS="-w"
           
           # Yapılandırma ve Derleme fazı
