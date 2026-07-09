@@ -25,10 +25,14 @@ jobs:
       - name: Checkout Builder Repository
         uses: actions/checkout@v6
 
-      - name: Orijinal Sistem Bağımlılıklarını Kur
+      - name: 32-bit Desteği ve Sistem Bağımlılıklarını Kur
         run: |
           export DEBIAN_FRONTEND=noninteractive
+          # 32-bit mimari desteğini sisteme tanıtıyoruz
+          dpkg --add-architecture i386
           apt-get update -y
+          
+          # SENIOR FIX: GCC 4.9'un 32-bit binary'lerini 64-bit sistemde çalıştırmak için gerekli lib32 kütüphaneleri eklendi
           apt-get install -y \
             bc \
             bison \
@@ -52,7 +56,11 @@ jobs:
             libncurses5-dev \
             libncurses5 \
             libtinfo5 \
-            wget
+            wget \
+            libc6:i386 \
+            libncurses5:i386 \
+            libstdc++6:i386 \
+            lib32z1
 
       - name: Git Güvenlik Ayarını Yap
         run: |
@@ -64,10 +72,7 @@ jobs:
 
       - name: Resmi Google AOSP Clang ve LineageOS GCC Toolchainlerini İndir
         run: |
-          # Clang için Google AOSP deposu kararlı şekilde iniyor
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
-          
-          # SENIOR CRITICAL FIX: Google GCC 4.9 ana depolarını boşalttığı için binary'leri eksiksiz barındıran LineageOS mirror'larına geçtik
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git $GCC64_DIR
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git $GCC32_DIR
 
@@ -75,22 +80,18 @@ jobs:
         run: |
           cd $KERNEL_DIR
           
-          # PATH hiyerarşisi (Artık tüm binary'ler yerli yerinde)
           export PATH="$CLANG_DIR/clang-r383902b/bin:$GCC64_DIR/bin:$GCC32_DIR/bin:/usr/bin:$PATH"
           
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # ORIJINAL ANDROID R DERLEME MATRIXI
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # Sözdizimi uyarılarını sustur
           export KCFLAGS="-w"
           
-          # Yapılandırma ve Derleme fazı
           mkdir -p out
           make O=out $DEFCONFIG
           make -j$(nproc --all) O=out
