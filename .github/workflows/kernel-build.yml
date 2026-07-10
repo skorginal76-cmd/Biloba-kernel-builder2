@@ -37,6 +37,24 @@ jobs:
         run: |
           git clone --depth=1 $XIAOMI_REPO -b $XIAOMI_BRANCH $KERNEL_DIR
 
+      - name: OEM Eksik Firmware Yaması (Dummy File Injection)
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::Dokunmatik Panel (Focaltech) Firmware Yamaları"
+          
+          # Eksik olan firmware klasör yolunu oluşturuyoruz
+          mkdir -p drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware
+          
+          # Derleyicinin aradığı Huaxing firmware'ini sahte bir hex değeriyle (0x00) oluşturuyoruz
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0c.i
+          
+          # İleride hata verme ihtimali olan diğer Focaltech panel varyantlarını da peşinen yamıyoruz
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0c.i
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0d.i
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0d.i
+          
+          echo "::endgroup::"
+
       - name: Resmi Google AOSP Clang İndir (Sadece Frontend)
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
@@ -49,7 +67,6 @@ jobs:
           
           mkdir -p out
           
-          # SENIOR FIX: Bash word-splitting hatasını kökünden çözmek için parametreler doğrudan ve tırnaklı (quoted) olarak verildi.
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" biloba_defconfig
           
           make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error"
