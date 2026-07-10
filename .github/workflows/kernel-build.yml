@@ -41,22 +41,18 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
 
-      - name: Godmode Derleme Başlat (Host Uyum Yamalı)
+      - name: Godmode Derleme Başlat (Doğrudan Argümanlı)
         run: |
           cd $KERNEL_DIR
           
           export PATH="$CLANG_DIR/clang-r383902b/bin:$PATH"
           
-          # SENIOR FIX: Modern Ubuntu derleyicisinin scripts/dtc altında hata vermesini engelleyen evrensel bayraklar eklendi
-          MAKE_ARGS="O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS=-w HOSTCFLAGS=-fcommon\ -Wno-error HOSTCXXFLAGS=-fcommon\ -Wno-error"
-          
           mkdir -p out
           
-          # Defconfig yapılandırmasını kur
-          make $MAKE_ARGS biloba_defconfig
+          # SENIOR FIX: Bash word-splitting hatasını kökünden çözmek için parametreler doğrudan ve tırnaklı (quoted) olarak verildi.
+          make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" biloba_defconfig
           
-          # Bütün CPU gücüyle derle
-          make -j$(nproc --all) $MAKE_ARGS
+          make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error"
 
       - name: Derleme Doğrulama Kontrolü (Sanity Check)
         run: |
