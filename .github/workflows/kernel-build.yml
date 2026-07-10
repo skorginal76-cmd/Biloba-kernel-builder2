@@ -37,21 +37,23 @@ jobs:
         run: |
           git clone --depth=1 $XIAOMI_REPO -b $XIAOMI_BRANCH $KERNEL_DIR
 
-      - name: OEM Eksik Firmware Yaması (Dummy File Injection)
+      - name: OEM Eksik Firmware Yaması (Kapsamlı Dummy Injection)
         run: |
           cd $KERNEL_DIR
           echo "::group::Dokunmatik Panel (Focaltech) Firmware Yamaları"
           
-          # Eksik olan firmware klasör yolunu oluşturuyoruz
           mkdir -p drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware
           
-          # Derleyicinin aradığı Huaxing firmware'ini sahte bir hex değeriyle (0x00) oluşturuyoruz
+          # Ana varyantlar
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0c.i
-          
-          # İleride hata verme ihtimali olan diğer Focaltech panel varyantlarını da peşinen yamıyoruz
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0d.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0d.i
+          
+          # FIX: Yeni patlayan sample dosyaları ve olası türevleri
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample.i
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample1.i
+          echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample2.i
           
           echo "::endgroup::"
 
