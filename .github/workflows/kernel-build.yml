@@ -50,11 +50,50 @@ jobs:
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0d.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0d.i
           
-          # FIX: Yeni patlayan sample dosyaları ve olası türevleri
+          # Fixlenen sample dosyaları ve türevleri
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample1.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample2.i
           
+          echo "::endgroup::"
+
+      - name: ZRAM Gelişmiş Kapasite ve Kullanım Yaması (8GB Disk / 6GB Limit)
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::ZRAM Çekirdek Seviyesi Sürücü Enjeksiyonu"
+          
+          python3 -c '
+          import os
+          filepath = "drivers/block/zram/zram_drv.c"
+          if os.path.exists(filepath):
+              with open(filepath, "r") as f:
+                  code = f.read()
+              
+              # 1. Müdahale: disksize_store fonksiyonunun başına "8G" dayatması enjekte et
+              if "static ssize_t disksize_store" in code:
+                  pos = code.find("static ssize_t disksize_store")
+                  brace = code.find("{", pos)
+                  if brace != -1:
+                      code = code[:brace+1] + "\n\tbuf = \"8G\";\n" + code[brace+1:]
+              
+              # 2. Müdahale: mem_limit_store fonksiyonunun başına "6G" dayatması enjekte et
+              if "static ssize_t mem_limit_store" in code:
+                  pos = code.find("static ssize_t mem_limit_store")
+                  brace = code.find("{", pos)
+                  if brace != -1:
+                      code = code[:brace+1] + "\n\tbuf = \"6G\";\n" + code[brace+1:]
+              
+              # 3. Müdahale: Disk boyutu işlenirken fiziksel havuz limitini (6GB) garantiye al
+              if "zram->disksize = disksize;" in code:
+                  code = code.replace("zram->disksize = disksize;", "zram->disksize = disksize;\n\tzram->limit_pages = 6ULL * 1024 * 1024 * 1024 >> PAGE_SHIFT;")
+              
+              with open(filepath, "w") as f:
+                  f.write(code)
+              print("SUCCESS: ZRAM sürücüsü çekirdek düzeyinde 8GB Swap / 6GB Bellek Sınırı ile mühürlendi.")
+          else:
+              print("ERROR: zram_drv.c bulunamadı, yama uygulanamadı!")
+              exit(1)
+          '
           echo "::endgroup::"
 
       - name: Resmi Google AOSP Clang İndir (Sadece Frontend)
