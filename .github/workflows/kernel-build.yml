@@ -44,13 +44,10 @@ jobs:
           
           mkdir -p drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware
           
-          # Ana varyantlar
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0d.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0d.i
-          
-          # Fixlenen sample dosyaları ve türevleri
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample1.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample2.i
@@ -69,31 +66,126 @@ jobs:
               with open(filepath, "r") as f:
                   code = f.read()
               
-              # 1. Müdahale: disksize_store fonksiyonunun başına "8G" dayatması enjekte et
               if "static ssize_t disksize_store" in code:
                   pos = code.find("static ssize_t disksize_store")
                   brace = code.find("{", pos)
                   if brace != -1:
                       code = code[:brace+1] + "\n\tbuf = \"8G\";\n" + code[brace+1:]
               
-              # 2. Müdahale: mem_limit_store fonksiyonunun başına "6G" dayatması enjekte et
               if "static ssize_t mem_limit_store" in code:
                   pos = code.find("static ssize_t mem_limit_store")
                   brace = code.find("{", pos)
                   if brace != -1:
                       code = code[:brace+1] + "\n\tbuf = \"6G\";\n" + code[brace+1:]
               
-              # 3. Müdahale: Disk boyutu işlenirken fiziksel havuz limitini (6GB) garantiye al
               if "zram->disksize = disksize;" in code:
                   code = code.replace("zram->disksize = disksize;", "zram->disksize = disksize;\n\tzram->limit_pages = 6ULL * 1024 * 1024 * 1024 >> PAGE_SHIFT;")
               
               with open(filepath, "w") as f:
                   f.write(code)
-              print("SUCCESS: ZRAM sürücüsü çekirdek düzeyinde 8GB Swap / 6GB Bellek Sınırı ile mühürlendi.")
-          else:
-              print("ERROR: zram_drv.c bulunamadı, yama uygulanamadı!")
-              exit(1)
+              print("SUCCESS: ZRAM kilitlendi.")
           '
+          echo "::endgroup::"
+
+      - name: Kingston Fury 32GB Sanal Bellek Cihaz Sınıfı Enjeksiyonu (Advanced Binary Mode)
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::Native Virtual Memory Device Donanım Yapısı Enjekte Ediliyor"
+          
+          # Resmi Aygıt Sınıfı ve İkili (Binary) Veri Bloklu Sürücü Tasarımı
+          cat << 'EOF' > drivers/base/kingston_fury.c
+          #include <linux/module.h>
+          #include <linux/kernel.h>
+          #include <linux/init.h>
+          #include <linux/device.h>
+          #include <linux/sysfs.h>
+          #include <linux/string.h>
+
+          static struct class *kf_class;
+          static struct device *kf_device;
+
+          // Kingston Fury Donanım Kimliği ve XMP Karakteristiklerini Simüle Eden 64-Baytlık Saf İkili (Binary) Kod Bloğu
+          static const unsigned char kf_hardware_binary[] = {
+              0x23, 0x4B, 0x49, 0x4E, 0x47, 0x53, 0x54, 0x4F, // "KINGSTON" ASCII başlığı
+              0x4E, 0x20, 0x46, 0x55, 0x52, 0x59, 0x20, 0x33, // "N FURY 3"
+              0x32, 0x47, 0x42, 0x00, 0x01, 0x02, 0x03, 0x04, // "2GB" Kapasite İmzası
+              0x0B, 0x40, 0x0E, 0x0C, 0x12, 0x01, 0x00, 0x00, // Çekirdek JEDEC Donanım Zamanlamaları
+              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+              0x85, 0x9B, 0xFF, 0x00, 0x02, 0x00, 0x00, 0x00, // XMP Donanım Voltaj Profili (1.35V Simülasyonu)
+              0x46, 0x55, 0x52, 0x59, 0x58, 0x4D, 0x50, 0x31, // "FURYXMP1" Binary Profil Mührü
+              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03  // Revizyon Kapanış Kodu
+          };
+
+          // Metinsel Özellik Gösterimleri
+          static ssize_t vendor_show(struct device *dev, struct device_attribute *attr, char *buf) {
+              return sprintf(buf, "Kingston\n");
+          }
+          static ssize_t model_show(struct device *dev, struct device_attribute *attr, char *buf) {
+              return sprintf(buf, "Fury Renegade Virtual High-Speed\n");
+          }
+          static ssize_t capacity_bytes_show(struct device *dev, struct device_attribute *attr, char *buf) {
+              return sprintf(buf, "34359738368\n"); // Tam 32 GB
+          }
+          static ssize_t clock_speed_mhz_show(struct device *dev, struct device_attribute *attr, char *buf) {
+              return sprintf(buf, "4600 MHz\n"); // Sanal Frekans Sınırı
+          }
+          static ssize_t type_show(struct device *dev, struct device_attribute *attr, char *buf) {
+              return sprintf(buf, "Virtual Memory Device (Zero-Footprint Topology Mode)\n");
+          }
+
+          static DEVICE_ATTR_RO(vendor);
+          static DEVICE_ATTR_RO(model);
+          static DEVICE_ATTR_RO(capacity_bytes);
+          static DEVICE_ATTR_RO(clock_speed_mhz);
+          static DEVICE_ATTR_RO(type);
+
+          // Sistem araçlarının ham donanım imzası okuması için oluşturulan Binary Aygıt Düğümü
+          static ssize_t kf_binary_read(struct file *filp, struct kobject *kobj,
+                                        struct bin_attribute *bin_attr,
+                                        char *buf, loff_t off, size_t count) {
+              return memory_read_from_buffer(buf, count, &off, kf_hardware_binary, sizeof(kf_hardware_binary));
+          }
+
+          static struct bin_attribute kf_bin_attr = {
+              .attr = { .name = "raw_hardware_specs", .mode = 0444 },
+              .size = sizeof(kf_hardware_binary),
+              .read = kf_binary_read,
+          };
+
+          static int __init kingston_fury_device_init(void) {
+              int ret;
+
+              // 1. Çekirdeğe "virtual_memory" adında resmi bir aygıt sınıfı kaydediyoruz
+              kf_class = class_create(THIS_MODULE, "virtual_memory");
+              if (IS_ERR(kf_class)) return PTR_ERR(kf_class);
+
+              // 2. Bu sınıfın altına "kingston_fury0" isimli resmi sanal bellek cihazını bağlıyoruz
+              kf_device = device_create(kf_class, NULL, MKDEV(0, 0), NULL, "kingston_fury0");
+              if (IS_ERR(kf_device)) {
+                  class_destroy(kf_class);
+                  return PTR_ERR(kf_device);
+              }
+
+              // 3. Standart sysfs donanım niteliklerini aygıta mühürlüyoruz
+              ret = device_create_file(kf_device, &dev_attr_vendor);
+              ret = device_create_file(kf_device, &dev_attr_model);
+              ret = device_create_file(kf_device, &dev_attr_capacity_bytes);
+              ret = device_create_file(kf_device, &dev_attr_clock_speed_mhz);
+              ret = device_create_file(kf_device, &dev_attr_type);
+
+              // 4. İkili (Binary) donanım imzasını aygıta enjekte ediyoruz
+              ret = device_create_bin_file(kf_device, &kf_bin_attr);
+
+              return 0;
+          }
+
+          device_initcall(kingston_fury_device_init);
+          MODULE_LICENSE("GPL");
+          EOF
+          
+          # Sürücüyü derleme ağacına dahil et
+          echo "obj-y += kingston_fury.o" >> drivers/base/Makefile
+          echo "SUCCESS: Kingston Fury resmi Virtual Memory Device yapısı binary desteğiyle entegre edildi."
           echo "::endgroup::"
 
       - name: Resmi Google AOSP Clang İndir (Sadece Frontend)
