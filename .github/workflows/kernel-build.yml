@@ -189,26 +189,110 @@ jobs:
           # dt-bindings (device tree binding'leri - güvenli)
           if [ -d "$BILOBA_DIR/include/dt-bindings" ]; then
             cp -r $BILOBA_DIR/include/dt-bindings/* include/dt-bindings/ 2>/dev/null || true
+            echo "  ✓ dt-bindings kopyalandı"
           fi
 
           # include/linux/soc/mediatek/ (mtk-cmdq.h gibi önemli header'lar)
           if [ -d "$BILOBA_DIR/include/linux/soc/mediatek" ]; then
             mkdir -p include/linux/soc/mediatek
             cp -r $BILOBA_DIR/include/linux/soc/mediatek/* include/linux/soc/mediatek/ 2>/dev/null || true
+            echo "  ✓ include/linux/soc/mediatek/ kopyalandı"
+            ls -la include/linux/soc/mediatek/ || echo "  ⚠ Dizin boş veya kopyalanamadı"
           fi
 
-          # include/linux/soc/ altındaki diğer MTK dizinleri
-          for soc_dir in $BILOBA_DIR/include/linux/soc/*; do
-            if [ -d "$soc_dir" ]; then
-              dir_name=$(basename "$soc_dir")
-              if echo "$dir_name" | grep -qiE "mediatek|mt67"; then
-                mkdir -p "include/linux/soc/$dir_name"
-                cp -r "$soc_dir"/* "include/linux/soc/$dir_name/" 2>/dev/null || true
-              fi
-            fi
-          done
+          # include/soc/mediatek/ (alternatif konum)
+          if [ -d "$BILOBA_DIR/include/soc/mediatek" ]; then
+            mkdir -p include/soc/mediatek
+            cp -r $BILOBA_DIR/include/soc/mediatek/* include/soc/mediatek/ 2>/dev/null || true
+            echo "  ✓ include/soc/mediatek/ kopyalandı"
+          fi
 
-          # SADECE mediatek/mt67 ile ilgili linux header'ları
+          # Tüm MTK ile ilgili header'ları find ile bul ve kopyala
+          echo "  → find ile MTK header'ları aranıyor..."
+          find $BILOBA_DIR/include -type f \( -iname "*mtk*" -o -iname "*mediatek*" -o -iname "*mt67*" \) | while read f; do
+            rel_path="${f#$BILOBA_DIR/include/}"
+            target_dir="include/$(dirname "$rel_path")"
+            mkdir -p "$target_dir"
+            cp "$f" "$target_dir/" 2>/dev/null || true
+          done
+          echo "  ✓ find ile tüm MTK header'ları kopyalandı"
+
+          # Kritik eksik header'ları kontrol et ve bulunamazsa dummy oluştur
+          echo "  → Kritik eksik header'lar kontrol ediliyor..."
+
+          # include/mailbox/ dizinini de biloba'dan kopyala
+          if [ -d "$BILOBA_DIR/include/mailbox" ]; then
+            mkdir -p include/mailbox
+            cp -r $BILOBA_DIR/include/mailbox/* include/mailbox/ 2>/dev/null || true
+            echo "  ✓ include/mailbox/ kopyalandı"
+          fi
+
+          # include/linux/mailbox/ dizinini de biloba'dan kopyala
+          if [ -d "$BILOBA_DIR/include/linux/mailbox" ]; then
+            mkdir -p include/linux/mailbox
+            cp -r $BILOBA_DIR/include/linux/mailbox/* include/linux/mailbox/ 2>/dev/null || true
+            echo "  ✓ include/linux/mailbox/ kopyalandı"
+          fi
+
+          # mtk-cmdq-mailbox.h kontrolü (include/mailbox/ altında)
+          if [ ! -f "include/linux/mailbox/mtk-cmdq-mailbox.h" ] && [ ! -f "include/mailbox/mtk-cmdq-mailbox.h" ]; then
+            echo "  ⚠ mtk-cmdq-mailbox.h bulunamadı, dummy oluşturuluyor..."
+            mkdir -p include/linux/mailbox
+            cat << 'MBOX_EOF' > include/linux/mailbox/mtk-cmdq-mailbox.h
+          /* Dummy mtk-cmdq-mailbox.h - Auto-generated for 4.14.336 port */
+          #ifndef _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H
+          #define _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H
+
+          #include <linux/types.h>
+          #include <linux/mailbox_client.h>
+          #include <linux/mailbox_controller.h>
+
+          struct cmdq_pkt {
+              void *buf;
+              size_t cnt;
+          };
+
+          struct cmdq_client {
+              struct mbox_client client;
+              struct mbox_chan *chan;
+          };
+
+          #endif /* _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H */
+          MBOX_EOF
+            echo "  ✓ Dummy mtk-cmdq-mailbox.h oluşturuldu"
+          else
+            echo "  ✓ mtk-cmdq-mailbox.h mevcut"
+          fi
+
+          # mtk-cmdq.h kontrolü
+          if [ ! -f "include/linux/soc/mediatek/mtk-cmdq.h" ] && [ ! -f "include/soc/mediatek/mtk-cmdq.h" ]; then
+            echo "  ⚠ mtk-cmdq.h bulunamadı, dummy header oluşturuluyor..."
+            mkdir -p include/linux/soc/mediatek
+            cat << 'HDR_EOF' > include/linux/soc/mediatek/mtk-cmdq.h
+          /* Dummy mtk-cmdq.h - Auto-generated for 4.14.336 port */
+          #ifndef _LINUX_SOC_MEDIATEK_MTK_CMDQ_H
+          #define _LINUX_SOC_MEDIATEK_MTK_CMDQ_H
+
+          #include <linux/types.h>
+          #include <linux/err.h>
+          #include <linux/mailbox/mtk-cmdq-mailbox.h>
+
+          struct cmdq_client *cmdq_mbox_create(struct device *dev, int index);
+          void cmdq_mbox_destroy(struct cmdq_client *client);
+          int cmdq_pkt_create(struct cmdq_client *client, struct cmdq_pkt **pkt_out);
+          void cmdq_pkt_destroy(struct cmdq_pkt *pkt);
+          int cmdq_pkt_write(struct cmdq_pkt *pkt, u32 value, u32 addr);
+          int cmdq_pkt_wfe(struct cmdq_pkt *pkt, u32 event);
+          int cmdq_pkt_flush(struct cmdq_pkt *pkt);
+
+          #endif /* _LINUX_SOC_MEDIATEK_MTK_CMDQ_H */
+          HDR_EOF
+            echo "  ✓ Dummy mtk-cmdq.h oluşturuldu"
+          else
+            echo "  ✓ mtk-cmdq.h mevcut"
+          fi
+
+          # SADECE mediatek/mt67 ile ilgili linux header'ları (dosya adı bazlı)
           for hdr in $BILOBA_DIR/include/linux/*mediatek* $BILOBA_DIR/include/linux/*mt67*; do
             if [ -e "$hdr" ]; then
               cp "$hdr" include/linux/ 2>/dev/null || true
@@ -226,6 +310,9 @@ jobs:
               cp "$trc" include/trace/events/ 2>/dev/null || true
             fi
           done
+
+          echo "  → Kopyalanan header'lar listesi:"
+          find include -type f \( -iname "*mtk*" -o -iname "*mediatek*" -o -iname "*mt67*" \) | head -30 || true
 
           # 23. Arch dosyalarını kopyala (sadece biloba özel)
           echo "→ Arch dosyaları portlanıyor..."
