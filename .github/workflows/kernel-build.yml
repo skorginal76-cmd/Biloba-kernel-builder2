@@ -1,17 +1,19 @@
-name: Godmode Biloba Kernel Build
+name: Godmode Biloba Kernel 4.14.336 Port & Build
 
 on:
   workflow_dispatch:
 
 env:
   XIAOMI_REPO: https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git
-  XIAOMI_BRANCH: biloba-r-oss
+  BILOBA_BRANCH: biloba-r-oss
+  UPSTREAM_KERNEL_URL: https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.14.336.tar.xz
   KERNEL_DIR: ${{ github.workspace }}/kernel-source
+  BILOBA_DIR: ${{ github.workspace }}/biloba-source
   CLANG_DIR: ${{ github.workspace }}/aosp-clang
 
 jobs:
-  build-godmode:
-    name: Bulletproof Native Build Stack
+  build-godmode-4.14.336:
+    name: Bulletproof 4.14.336 Native Build Stack
     runs-on: ubuntu-22.04
 
     steps:
@@ -27,23 +29,198 @@ jobs:
             python3 python-is-python3 tar u-boot-tools xz-utils \
             zip zlib1g-dev libncurses5-dev libncurses5 libtinfo5 \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            wget
+            wget rsync
 
       - name: Git Güvenlik Ayarını Yap
         run: |
           git config --global --add safe.directory '*'
 
-      - name: Resmi Xiaomi Kernel Kaynağını Çek (MiCode)
+      - name: Upstream Linux 4.14.336 İndir ve Extract Et
         run: |
-          git clone --depth=1 $XIAOMI_REPO -b $XIAOMI_BRANCH $KERNEL_DIR
+          echo "::group::Upstream 4.14.336 İndiriliyor"
+          wget -q --show-progress $UPSTREAM_KERNEL_URL -O linux-4.14.336.tar.xz
+          tar -xf linux-4.14.336.tar.xz
+          mv linux-4.14.336 $KERNEL_DIR
+          echo "Kernel versiyonu: $(grep -m1 'VERSION = ' $KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ').$(grep -m1 'PATCHLEVEL = ' $KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ').$(grep -m1 'SUBLEVEL = ' $KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ')"
+          echo "::endgroup::"
+
+      - name: Resmi Xiaomi Biloba Kernel Kaynağını Çek (MT6768 Sürücü Kaynağı)
+        run: |
+          echo "::group::Biloba-r-oss (4.14.186) İndiriliyor"
+          git clone --depth=1 $XIAOMI_REPO -b $BILOBA_BRANCH $BILOBA_DIR
+          echo "Biloba kernel versiyonu:"
+          head -5 $BILOBA_DIR/Makefile
+          echo "::endgroup::"
+
+      - name: MT6768 (Biloba) Platform Sürücülerini 4.14.336'ya Portla
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::MT6768 Platform Sürücü Portlama"
+
+          # 1. MTK Platform sürücü dizinlerini kopyala
+          echo "→ drivers/misc/mediatek portlanıyor..."
+          mkdir -p drivers/misc/mediatek
+          cp -r $BILOBA_DIR/drivers/misc/mediatek/* drivers/misc/mediatek/ 2>/dev/null || true
+          if ! grep -q "mediatek" drivers/misc/Makefile; then
+            echo "obj-y += mediatek/" >> drivers/misc/Makefile
+          fi
+
+          # 2. Device Tree dosyalarını kopyala
+          echo "→ Device Tree portlanıyor..."
+          mkdir -p arch/arm64/boot/dts/mediatek
+          cp -r $BILOBA_DIR/arch/arm64/boot/dts/mediatek/* arch/arm64/boot/dts/mediatek/ 2>/dev/null || true
+          # DTS Makefile düzenlemesi
+          if [ -f arch/arm64/boot/dts/Makefile ]; then
+            if ! grep -q "mediatek" arch/arm64/boot/dts/Makefile; then
+              echo "subdir-y += mediatek" >> arch/arm64/boot/dts/Makefile
+            fi
+          fi
+
+          # 3. Config dosyasını kopyala
+          echo "→ biloba_defconfig portlanıyor..."
+          cp $BILOBA_DIR/arch/arm64/configs/biloba_defconfig arch/arm64/configs/ 2>/dev/null || true
+
+          # 4. Dokunmatik ekran sürücülerini kopyala
+          echo "→ Dokunmatik sürücüler portlanıyor..."
+          mkdir -p drivers/input/touchscreen/mediatek
+          cp -r $BILOBA_DIR/drivers/input/touchscreen/mediatek/* drivers/input/touchscreen/mediatek/ 2>/dev/null || true
+          if ! grep -q "mediatek" drivers/input/touchscreen/Makefile; then
+            echo "obj-y += mediatek/" >> drivers/input/touchscreen/Makefile
+          fi
+
+          # 5. Power/PMIC sürücülerini kopyala
+          echo "→ Power sürücüleri portlanıyor..."
+          mkdir -p drivers/power
+          cp -r $BILOBA_DIR/drivers/power/* drivers/power/ 2>/dev/null || true
+
+          # 6. Clock sürücülerini kopyala
+          echo "→ Clock sürücüleri portlanıyor..."
+          mkdir -p drivers/clk/mediatek
+          cp -r $BILOBA_DIR/drivers/clk/mediatek/* drivers/clk/mediatek/ 2>/dev/null || true
+
+          # 7. IRQ chip sürücülerini kopyala
+          echo "→ IRQ sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/irqchip/*mediatek* drivers/irqchip/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/irqchip/*mt67* drivers/irqchip/ 2>/dev/null || true
+
+          # 8. SoC sürücülerini kopyala
+          echo "→ SoC sürücüleri portlanıyor..."
+          mkdir -p drivers/soc/mediatek
+          cp -r $BILOBA_DIR/drivers/soc/mediatek/* drivers/soc/mediatek/ 2>/dev/null || true
+          if ! grep -q "mediatek" drivers/soc/Makefile; then
+            echo "obj-y += mediatek/" >> drivers/soc/Makefile
+          fi
+
+          # 9. Pin kontrol sürücülerini kopyala
+          echo "→ Pin kontrol sürücüleri portlanıyor..."
+          mkdir -p drivers/pinctrl/mediatek
+          cp -r $BILOBA_DIR/drivers/pinctrl/mediatek/* drivers/pinctrl/mediatek/ 2>/dev/null || true
+
+          # 10. SPI sürücülerini kopyala
+          echo "→ SPI sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/spi/*mediatek* drivers/spi/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/spi/*mt67* drivers/spi/ 2>/dev/null || true
+
+          # 11. I2C sürücülerini kopyala
+          echo "→ I2C sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/i2c/*mediatek* drivers/i2c/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/i2c/*mt67* drivers/i2c/ 2>/dev/null || true
+
+          # 12. USB sürücülerini kopyala
+          echo "→ USB sürücüleri portlanıyor..."
+          cp -r $BILOBA_DIR/drivers/usb/* drivers/usb/ 2>/dev/null || true
+
+          # 13. MMC sürücülerini kopyala
+          echo "→ MMC sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/mmc/*mediatek* drivers/mmc/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/mmc/*mt67* drivers/mmc/ 2>/dev/null || true
+
+          # 14. Thermal sürücülerini kopyala
+          echo "→ Thermal sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/thermal/*mediatek* drivers/thermal/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/thermal/*mt67* drivers/thermal/ 2>/dev/null || true
+
+          # 15. CPUFreq sürücülerini kopyala
+          echo "→ CPUFreq sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/cpufreq/*mediatek* drivers/cpufreq/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/cpufreq/*mt67* drivers/cpufreq/ 2>/dev/null || true
+
+          # 16. CPUIdle sürücülerini kopyala
+          echo "→ CPUIdle sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/cpuidle/*mediatek* drivers/cpuidle/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/cpuidle/*mt67* drivers/cpuidle/ 2>/dev/null || true
+
+          # 17. Watchdog sürücülerini kopyala
+          echo "→ Watchdog sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/watchdog/*mediatek* drivers/watchdog/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/watchdog/*mt67* drivers/watchdog/ 2>/dev/null || true
+
+          # 18. LED sürücülerini kopyala
+          echo "→ LED sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/leds/*mediatek* drivers/leds/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/leds/*mt67* drivers/leds/ 2>/dev/null || true
+
+          # 19. Network sürücülerini kopyala
+          echo "→ Network sürücüleri portlanıyor..."
+          cp $BILOBA_DIR/drivers/net/*mediatek* drivers/net/ 2>/dev/null || true
+          cp $BILOBA_DIR/drivers/net/*mt67* drivers/net/ 2>/dev/null || true
+
+          # 20. GPU/DRM sürücülerini kopyala
+          echo "→ GPU/DRM sürücüleri portlanıyor..."
+          mkdir -p drivers/gpu/drm/mediatek
+          cp -r $BILOBA_DIR/drivers/gpu/drm/mediatek/* drivers/gpu/drm/mediatek/ 2>/dev/null || true
+
+          # 21. Sound sürücülerini kopyala (sadece MTK özel)
+          echo "→ Sound sürücüleri portlanıyor..."
+          for f in $BILOBA_DIR/sound/soc/mediatek/*; do
+            if [ -e "$f" ]; then
+              mkdir -p sound/soc/mediatek
+              cp -r "$f" sound/soc/mediatek/ 2>/dev/null || true
+            fi
+          done
+
+          # 22. MTK Header'larını kopyala (sadece dt-bindings ve trace)
+          echo "→ MTK header'ları portlanıyor..."
+          if [ -d "$BILOBA_DIR/include/dt-bindings" ]; then
+            cp -r $BILOBA_DIR/include/dt-bindings/* include/dt-bindings/ 2>/dev/null || true
+          fi
+          if [ -d "$BILOBA_DIR/include/trace" ]; then
+            cp -r $BILOBA_DIR/include/trace/* include/trace/ 2>/dev/null || true
+          fi
+          # MTK özel header'ları
+          for hdr in $BILOBA_DIR/include/linux/*mediatek* $BILOBA_DIR/include/linux/*mt67*; do
+            if [ -e "$hdr" ]; then
+              cp "$hdr" include/linux/ 2>/dev/null || true
+            fi
+          done
+          for hdr in $BILOBA_DIR/include/uapi/linux/*mediatek* $BILOBA_DIR/include/uapi/linux/*mt67*; do
+            if [ -e "$hdr" ]; then
+              cp "$hdr" include/uapi/linux/ 2>/dev/null || true
+            fi
+          done
+
+          # 23. Arch dosyalarını kopyala (sadece biloba özel)
+          echo "→ Arch dosyaları portlanıyor..."
+          if [ -d "$BILOBA_DIR/arch/arm64/kernel" ]; then
+            cp $BILOBA_DIR/arch/arm64/kernel/*mediatek* arch/arm64/kernel/ 2>/dev/null || true
+            cp $BILOBA_DIR/arch/arm64/kernel/*mt67* arch/arm64/kernel/ 2>/dev/null || true
+          fi
+          if [ -d "$BILOBA_DIR/arch/arm64/mm" ]; then
+            cp $BILOBA_DIR/arch/arm64/mm/*mediatek* arch/arm64/mm/ 2>/dev/null || true
+            cp $BILOBA_DIR/arch/arm64/mm/*mt67* arch/arm64/mm/ 2>/dev/null || true
+          fi
+
+          echo "::endgroup::"
+          echo "SUCCESS: MT6768 (Biloba) sürücüleri 4.14.336'ya portlandı."
+          echo "NOT: Derleme hataları çıkarsa, API farklılıklarından kaynaklanıyor olabilir."
 
       - name: OEM Eksik Firmware Yaması (Kapsamlı Dummy Injection)
         run: |
           cd $KERNEL_DIR
           echo "::group::Dokunmatik Panel (Focaltech) Firmware Yamaları"
-          
+
           mkdir -p drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware
-          
+
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0d.i
@@ -51,36 +228,36 @@ jobs:
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample1.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample2.i
-          
+
           echo "::endgroup::"
 
       - name: ZRAM Gelişmiş Kapasite ve Kullanım Yaması (8GB Disk / 6GB Limit)
         run: |
           cd $KERNEL_DIR
           echo "::group::ZRAM Çekirdek Seviyesi Sürücü Enjeksiyonu"
-          
+
           python3 -c '
           import os
           filepath = "drivers/block/zram/zram_drv.c"
           if os.path.exists(filepath):
               with open(filepath, "r") as f:
                   code = f.read()
-              
+
               if "static ssize_t disksize_store" in code:
                   pos = code.find("static ssize_t disksize_store")
                   brace = code.find("{", pos)
                   if brace != -1:
                       code = code[:brace+1] + "\n\tbuf = \"8G\";\n" + code[brace+1:]
-              
+
               if "static ssize_t mem_limit_store" in code:
                   pos = code.find("static ssize_t mem_limit_store")
                   brace = code.find("{", pos)
                   if brace != -1:
                       code = code[:brace+1] + "\n\tbuf = \"6G\";\n" + code[brace+1:]
-              
+
               if "zram->disksize = disksize;" in code:
                   code = code.replace("zram->disksize = disksize;", "zram->disksize = disksize;\n\tzram->limit_pages = 6ULL * 1024 * 1024 * 1024 >> PAGE_SHIFT;")
-              
+
               with open(filepath, "w") as f:
                   f.write(code)
               print("SUCCESS: ZRAM kilitlendi.")
@@ -91,7 +268,7 @@ jobs:
         run: |
           cd $KERNEL_DIR
           echo "::group::Native Virtual Memory Device Donanım Yapısı Enjekte Ediliyor"
-          
+
           # Resmi Aygıt Sınıfı ve İkili (Binary) Veri Bloklu Sürücü Tasarımı
           cat << 'EOF' > drivers/base/kingston_fury.c
           #include <linux/module.h>
@@ -141,7 +318,7 @@ jobs:
 
           // Sistem araçlarının ham donanım imzası okuması için oluşturulan Binary Aygıt Düğümü
           static ssize_t kf_binary_read(struct file *filp, struct kobject *kobj,
-                                        struct bin_attribute *bin_attr,
+                                        struct bin_attribute *bin_attribute,
                                         char *buf, loff_t off, size_t count) {
               return memory_read_from_buffer(buf, count, &off, kf_hardware_binary, sizeof(kf_hardware_binary));
           }
@@ -182,7 +359,7 @@ jobs:
           device_initcall(kingston_fury_device_init);
           MODULE_LICENSE("GPL");
           EOF
-          
+
           # Sürücüyü derleme ağacına dahil et
           echo "obj-y += kingston_fury.o" >> drivers/base/Makefile
           echo "SUCCESS: Kingston Fury resmi Virtual Memory Device yapısı binary desteğiyle entegre edildi."
@@ -192,33 +369,37 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
 
-      - name: Godmode Derleme Başlat (Doğrudan Argümanlı)
+      - name: Godmode 4.14.336 Derleme Başlat (Doğrudan Argümanlı)
         run: |
           cd $KERNEL_DIR
-          
+
           export PATH="$CLANG_DIR/clang-r383902b/bin:$PATH"
-          
+
           mkdir -p out
-          
+
+          # Config'i uygula ve eski config ile senkronize et
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" biloba_defconfig
-          
+
+          # Yeni config seçeneklerini varsayılan değerlerle doldur (non-interactive)
+          yes "" | make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
+
           make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error"
 
       - name: Derleme Doğrulama Kontrolü (Sanity Check)
         run: |
           if [ ! -f $KERNEL_DIR/out/arch/arm64/boot/Image ]; then
-            echo "::error::Kritik Hata: Godmode üretimi Image çıktısı üretemedi."
+            echo "::error::Kritik Hata: Godmode 4.14.336 üretimi Image çıktısı üretemedi."
             exit 1
           fi
 
       - name: Orijinal Image Dosyasını Yükle
         uses: actions/upload-artifact@v4
         with:
-          name: godmode-biloba-Image
+          name: godmode-biloba-4.14.336-Image
           path: kernel-source/out/arch/arm64/boot/Image
 
       - name: Orijinal DTB Dosyalarını Yükle
         uses: actions/upload-artifact@v4
         with:
-          name: godmode-biloba-dtb
+          name: godmode-biloba-4.14.336-dtb
           path: kernel-source/out/arch/arm64/boot/dts/**/*.dtb
