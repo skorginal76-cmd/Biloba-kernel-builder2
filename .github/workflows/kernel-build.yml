@@ -209,13 +209,47 @@ jobs:
 
           # Tüm MTK ile ilgili header'ları find ile bul ve kopyala
           echo "  → find ile MTK header'ları aranıyor..."
-          find $BILOBA_DIR/include -type f \( -iname "*mtk*" -o -iname "*mediatek*" -o -iname "*mt67*" \) | while read f; do
+          find $BILOBA_DIR/include -type f \( -iname "*mtk*" -o -iname "*mediatek*" -o -iname "*mt67*" -o -iname "*helio*" -o -iname "*dvfsrc*" \) | while read f; do
             rel_path="${f#$BILOBA_DIR/include/}"
             target_dir="include/$(dirname "$rel_path")"
             mkdir -p "$target_dir"
             cp "$f" "$target_dir/" 2>/dev/null || true
           done
           echo "  ✓ find ile tüm MTK header'ları kopyalandı"
+
+          # Biloba'nın TÜM dizinlerinde helio-dvfsrc-opp.h ara ve include/linux/'a kopyala
+          echo "  → helio-dvfsrc-opp.h aranıyor..."
+          HELIO_HDR=$(find $BILOBA_DIR -name "helio-dvfsrc-opp.h" -type f 2>/dev/null | head -1)
+          if [ -n "$HELIO_HDR" ]; then
+            cp "$HELIO_HDR" include/linux/ 2>/dev/null || true
+            echo "  ✓ helio-dvfsrc-opp.h bulundu ve kopyalandı: $HELIO_HDR"
+          else
+            echo "  ⚠ helio-dvfsrc-opp.h bulunamadı, dummy oluşturuluyor..."
+            cat << 'HELIO_EOF' > include/linux/helio-dvfsrc-opp.h
+          /* Dummy helio-dvfsrc-opp.h - Auto-generated for 4.14.336 port */
+          #ifndef _HELIO_DVFSRC_OPP_H_
+          #define _HELIO_DVFSRC_OPP_H_
+
+          #include <linux/types.h>
+
+          struct dvfsrc_opp {
+              u32 vcore_opp;
+              u32 dram_opp;
+              u32 vcore_uv;
+              u32 dram_khz;
+          };
+
+          int helio_dvfsrc_get_opp_count(void);
+          const struct dvfsrc_opp *helio_dvfsrc_get_opp(int idx);
+          int helio_dvfsrc_get_dram_opp(void);
+          int helio_dvfsrc_get_vcore_opp(void);
+          void helio_dvfsrc_set_dram_opp(int opp);
+          void helio_dvfsrc_set_vcore_opp(int opp);
+
+          #endif /* _HELIO_DVFSRC_OPP_H_ */
+          HELIO_EOF
+            echo "  ✓ Dummy helio-dvfsrc-opp.h oluşturuldu"
+          fi
 
           # Kritik eksik header'ları kontrol et ve bulunamazsa dummy oluştur
           echo "  → Kritik eksik header'lar kontrol ediliyor..."
