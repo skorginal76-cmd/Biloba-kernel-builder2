@@ -394,7 +394,42 @@ jobs:
           # Yeni config seçeneklerini varsayılan değerlerle doldur (non-interactive)
           yes "" | make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
 
-          make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error"
+          # Gereksiz upstream sürücüleri kapat (telefon kerneli için)
+          ./scripts/config --file out/.config --disable CONFIG_MEDIA_RC_SUPPORT
+          ./scripts/config --file out/.config --disable CONFIG_RC_CORE
+          ./scripts/config --file out/.config --disable CONFIG_RC_DECODERS
+          ./scripts/config --file out/.config --disable CONFIG_RC_DEVICES
+          ./scripts/config --file out/.config --disable CONFIG_VIDEO_V4L2
+          ./scripts/config --file out/.config --disable CONFIG_VIDEO_DEV
+          ./scripts/config --file out/.config --disable CONFIG_DVB_CORE
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_AUDIO
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_US122L
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_USX2Y
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_CAIAQ
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_6FIRE
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_HIFACE
+          ./scripts/config --file out/.config --disable CONFIG_SND_BCD2000
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_LINE6
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_POD
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_PODHD
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_TONEPORT
+          ./scripts/config --file out/.config --disable CONFIG_SND_USB_VARIAX
+          make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
+
+          # Derlemeyi başlat ve log dosyasına kaydet
+          make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" 2>&1 | tee build.log
+
+          # Hata varsa son 50 satırı göster
+          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            echo "::error::Derleme hatası tespit edildi!"
+            echo "::group::Son 50 hata satırı"
+            grep -n -i "error:" build.log | tail -50 || true
+            echo "::endgroup::"
+            echo "::group::Son 100 derleme satırı"
+            tail -100 build.log
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Derleme Doğrulama Kontrolü (Sanity Check)
         run: |
@@ -402,6 +437,13 @@ jobs:
             echo "::error::Kritik Hata: Godmode 4.14.336 üretimi Image çıktısı üretemedi."
             exit 1
           fi
+
+      - name: Derleme Logunu Yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: kernel-source/build.log
 
       - name: Orijinal Image Dosyasını Yükle
         uses: actions/upload-artifact@v4
