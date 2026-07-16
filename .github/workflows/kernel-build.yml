@@ -234,6 +234,22 @@ jobs:
             echo "  ✓ include/linux/mailbox/ kopyalandı"
           fi
 
+          # include/drm/ dizinini biloba'dan kopyala (MTK DRM sürücüleri için gerekli)
+          if [ -d "$BILOBA_DIR/include/drm" ]; then
+            echo "  → include/drm/ kopyalanıyor..."
+            for drm_hdr in $BILOBA_DIR/include/drm/*; do
+              if [ -e "$drm_hdr" ]; then
+                fname=$(basename "$drm_hdr")
+                # Sadece upstream'de olmayanları kopyala (çakışma riskini azalt)
+                if [ ! -f "include/drm/$fname" ]; then
+                  cp "$drm_hdr" include/drm/ 2>/dev/null || true
+                  echo "    + $fname kopyalandı"
+                fi
+              fi
+            done
+            echo "  ✓ include/drm/ güncellendi"
+          fi
+
           # mtk-cmdq-mailbox.h kontrolü (include/mailbox/ altında)
           if [ ! -f "include/linux/mailbox/mtk-cmdq-mailbox.h" ] && [ ! -f "include/mailbox/mtk-cmdq-mailbox.h" ]; then
             echo "  ⚠ mtk-cmdq-mailbox.h bulunamadı, dummy oluşturuluyor..."
@@ -262,6 +278,31 @@ jobs:
             echo "  ✓ Dummy mtk-cmdq-mailbox.h oluşturuldu"
           else
             echo "  ✓ mtk-cmdq-mailbox.h mevcut"
+          fi
+
+          # drm_writeback.h kontrolü (MTK DRM sürücüleri için)
+          if [ ! -f "include/drm/drm_writeback.h" ]; then
+            echo "  ⚠ drm_writeback.h bulunamadı, dummy oluşturuluyor..."
+            cat << 'DRM_EOF' > include/drm/drm_writeback.h
+          /* Dummy drm_writeback.h - Auto-generated for 4.14.336 port */
+          #ifndef _DRM_DRM_WRITEBACK_H_
+          #define _DRM_DRM_WRITEBACK_H_
+
+          #include <drm/drm_connector.h>
+          #include <drm/drm_mode_object.h>
+
+          struct drm_writeback_connector {
+              struct drm_connector base;
+          };
+
+          static inline int drm_connector_init(struct drm_device *dev,
+                                               struct drm_connector *connector,
+                                               const struct drm_connector_funcs *funcs,
+                                               int connector_type) { return 0; }
+
+          #endif /* _DRM_DRM_WRITEBACK_H_ */
+          DRM_EOF
+            echo "  ✓ Dummy drm_writeback.h oluşturuldu"
           fi
 
           # mtk-cmdq.h kontrolü
