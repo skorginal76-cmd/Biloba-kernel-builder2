@@ -12,7 +12,7 @@ env:
   CLANG_DIR: ${{ github.workspace }}/aosp-clang
 
 jobs:
-  build-godmode-4.14.336:
+  build-godmode-414336:
     name: Bulletproof 4.14.336 Native Build Stack
     runs-on: ubuntu-22.04
 
