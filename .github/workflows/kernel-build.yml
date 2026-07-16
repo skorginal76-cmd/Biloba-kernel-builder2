@@ -191,6 +191,23 @@ jobs:
             cp -r $BILOBA_DIR/include/dt-bindings/* include/dt-bindings/ 2>/dev/null || true
           fi
 
+          # include/linux/soc/mediatek/ (mtk-cmdq.h gibi önemli header'lar)
+          if [ -d "$BILOBA_DIR/include/linux/soc/mediatek" ]; then
+            mkdir -p include/linux/soc/mediatek
+            cp -r $BILOBA_DIR/include/linux/soc/mediatek/* include/linux/soc/mediatek/ 2>/dev/null || true
+          fi
+
+          # include/linux/soc/ altındaki diğer MTK dizinleri
+          for soc_dir in $BILOBA_DIR/include/linux/soc/*; do
+            if [ -d "$soc_dir" ]; then
+              dir_name=$(basename "$soc_dir")
+              if echo "$dir_name" | grep -qiE "mediatek|mt67"; then
+                mkdir -p "include/linux/soc/$dir_name"
+                cp -r "$soc_dir"/* "include/linux/soc/$dir_name/" 2>/dev/null || true
+              fi
+            fi
+          done
+
           # SADECE mediatek/mt67 ile ilgili linux header'ları
           for hdr in $BILOBA_DIR/include/linux/*mediatek* $BILOBA_DIR/include/linux/*mt67*; do
             if [ -e "$hdr" ]; then
