@@ -566,9 +566,16 @@ jobs:
           ./scripts/config --file out/.config --disable CONFIG_DVB_CORE
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
           
-          # Eger dram_ctrl derlenemezse, kosullu derlemeyi devre disi birak
-          if [ -f "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile" ]; then
-            python3 -c "import re; f=open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile','r'); c=f.read(); f.close(); c=re.sub(r'^obj-y.*dram_ctrl','# obj-y disabled for 4.14.336 port',c,flags=re.M); f=open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile','w'); f.write(c); f.close(); print('dram_ctrl Makefile disabled')"
+          # dram_ctrl derlenemezse, boost_ctrl agacindan tamamen cikar
+          if [ -d "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl" ]; then
+            echo "  -> dram_ctrl derleme agacindan cikariliyor..."
+            # Ust Makefile'dan dram_ctrl referansini kaldir
+            if [ -f "drivers/misc/mediatek/performance/boost_ctrl/Makefile" ]; then
+              sed -i 's/.*dram_ctrl.*/# &  (disabled for 4.14.336 port)/' drivers/misc/mediatek/performance/boost_ctrl/Makefile
+            fi
+            # dram_ctrl Makefile'ini gecersiz kil
+            echo "# dram_ctrl disabled for 4.14.336 port - missing helio-dvfsrc-opp.h" > drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile
+            echo "obj-y :=" >> drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile
           fi
           
           # Derlemeyi baslat ve log dosyasina kaydet
