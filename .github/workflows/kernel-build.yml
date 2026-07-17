@@ -568,15 +568,7 @@ jobs:
           
           # Eger dram_ctrl derlenemezse, kosullu derlemeyi devre disi birak
           if [ -f "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile" ]; then
-            python3 -c "
-            import re
-            with open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile', 'r') as f:
-                content = f.read()
-            content = re.sub(r'^obj-y.*dram_ctrl', '# obj-y disabled for 4.14.336 port - missing helio-dvfsrc-opp.h', content, flags=re.M)
-            with open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile', 'w') as f:
-                f.write(content)
-            print('dram_ctrl Makefile disabled if needed')
-            "
+            python3 -c "import re; f=open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile','r'); c=f.read(); f.close(); c=re.sub(r'^obj-y.*dram_ctrl','# obj-y disabled for 4.14.336 port',c,flags=re.M); f=open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile','w'); f.write(c); f.close(); print('dram_ctrl Makefile disabled')"
           fi
           
           # Derlemeyi baslat ve log dosyasina kaydet
