@@ -219,13 +219,14 @@ jobs:
 
           # Biloba'nın TÜM dizinlerinde helio-dvfsrc-opp.h ara ve include/linux/'a kopyala
           echo "  → helio-dvfsrc-opp.h aranıyor..."
+          mkdir -p include/linux
           HELIO_HDR=$(find $BILOBA_DIR -name "helio-dvfsrc-opp.h" -type f 2>/dev/null | head -1)
           if [ -n "$HELIO_HDR" ]; then
-            cp "$HELIO_HDR" include/linux/ 2>/dev/null || true
+            cp "$HELIO_HDR" include/linux/helio-dvfsrc-opp.h
             echo "  ✓ helio-dvfsrc-opp.h bulundu ve kopyalandı: $HELIO_HDR"
           else
             echo "  ⚠ helio-dvfsrc-opp.h bulunamadı, dummy oluşturuluyor..."
-            cat << 'HELIO_EOF' > include/linux/helio-dvfsrc-opp.h
+            cat > include/linux/helio-dvfsrc-opp.h << 'HELIO_EOF'
           /* Dummy helio-dvfsrc-opp.h - Auto-generated for 4.14.336 port */
           #ifndef _HELIO_DVFSRC_OPP_H_
           #define _HELIO_DVFSRC_OPP_H_
@@ -250,6 +251,7 @@ jobs:
           HELIO_EOF
             echo "  ✓ Dummy helio-dvfsrc-opp.h oluşturuldu"
           fi
+          ls -la include/linux/helio-dvfsrc-opp.h || echo "  ✗ helio-dvfsrc-opp.h hala yok!"
 
           # Kritik eksik header'ları kontrol et ve bulunamazsa dummy oluştur
           echo "  → Kritik eksik header'lar kontrol ediliyor..."
@@ -594,6 +596,12 @@ jobs:
           ./scripts/config --file out/.config --disable CONFIG_SND_USB_TONEPORT
           ./scripts/config --file out/.config --disable CONFIG_SND_USB_VARIAX
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
+
+          # Eğer dram_ctrl derlenemezse, koşullu derlemeyi devre dışı bırak
+          if [ -f "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile" ]; then
+            sed -i 's/^obj-y.*dram_ctrl/# obj-y disabled for 4.14.336 port - missing helio-dvfsrc-opp.h
+# &/' drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile 2>/dev/null || true
+          fi
 
           # Derlemeyi başlat ve log dosyasına kaydet
           make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" 2>&1 | tee build.log
