@@ -376,7 +376,7 @@ void helio_dvfsrc_set_vcore_opp(int opp);
 """)
     print('  + Dummy helio-dvfsrc-opp.h olusturuldu')
 
-print('SUCCESS: Tum dummy header'lar olusturuldu')
+print("SUCCESS: Tum dummy header'lar olusturuldu")
 PYEOF
           echo "::endgroup::"
 
