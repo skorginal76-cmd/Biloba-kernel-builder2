@@ -20,7 +20,7 @@ jobs:
       - name: Checkout Builder Repository
         uses: actions/checkout@v6
 
-      - name: Native 64-Bit Çapraz Derleyicileri ve Bağımlılıkları Kur
+      - name: Native 64-Bit Capraz Derleyicileri ve Bagimliliklari Kur
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
@@ -31,345 +31,213 @@ jobs:
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
             wget rsync
 
-      - name: Git Güvenlik Ayarını Yap
+      - name: Git Guvenlik Ayarini Yap
         run: |
           git config --global --add safe.directory '*'
 
-      - name: Upstream Linux 4.14.336 İndir ve Extract Et
+      - name: Upstream Linux 4.14.336 Indir ve Extract Et
         run: |
-          echo "::group::Upstream 4.14.336 İndiriliyor"
+          echo "::group::Upstream 4.14.336 Indiriliyor"
           wget -q --show-progress $UPSTREAM_KERNEL_URL -O linux-4.14.336.tar.xz
           tar -xf linux-4.14.336.tar.xz
           mv linux-4.14.336 $KERNEL_DIR
-          echo "Kernel versiyonu: $(grep -m1 'VERSION = ' $KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ').$(grep -m1 'PATCHLEVEL = ' $KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ').$(grep -m1 'SUBLEVEL = ' $KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ')"
+          echo "Kernel versiyonu: \$(grep -m1 'VERSION = ' \$KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ').\$(grep -m1 'PATCHLEVEL = ' \$KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ').\$(grep -m1 'SUBLEVEL = ' \$KERNEL_DIR/Makefile | cut -d'=' -f2 | tr -d ' ')"
           echo "::endgroup::"
 
-      - name: Resmi Xiaomi Biloba Kernel Kaynağını Çek (MT6768 Sürücü Kaynağı)
+      - name: Resmi Xiaomi Biloba Kernel Kaynagini Cek (MT6768 Surucu Kaynagi)
         run: |
-          echo "::group::Biloba-r-oss (4.14.186) İndiriliyor"
+          echo "::group::Biloba-r-oss (4.14.186) Indiriliyor"
           git clone --depth=1 $XIAOMI_REPO -b $BILOBA_BRANCH $BILOBA_DIR
           echo "Biloba kernel versiyonu:"
           head -5 $BILOBA_DIR/Makefile
           echo "::endgroup::"
 
-      - name: MT6768 (Biloba) Platform Sürücülerini 4.14.336'ya Portla
+      - name: MT6768 (Biloba) Platform Suruculerini 4.14.336'ya Portla
         run: |
           cd $KERNEL_DIR
-          echo "::group::MT6768 Platform Sürücü Portlama"
-
-          # 1. MTK Platform sürücü dizinlerini kopyala
-          echo "→ drivers/misc/mediatek portlanıyor..."
+          echo "::group::MT6768 Platform Surucu Portlama"
+          
+          # 1. MTK Platform surucu dizinlerini kopyala
+          echo "-> drivers/misc/mediatek portlaniyor..."
           mkdir -p drivers/misc/mediatek
           cp -r $BILOBA_DIR/drivers/misc/mediatek/* drivers/misc/mediatek/ 2>/dev/null || true
           if ! grep -q "mediatek" drivers/misc/Makefile; then
             echo "obj-y += mediatek/" >> drivers/misc/Makefile
           fi
-
-          # 2. Device Tree dosyalarını kopyala
-          echo "→ Device Tree portlanıyor..."
+          
+          # 2. Device Tree dosyalarini kopyala
+          echo "-> Device Tree portlaniyor..."
           mkdir -p arch/arm64/boot/dts/mediatek
           cp -r $BILOBA_DIR/arch/arm64/boot/dts/mediatek/* arch/arm64/boot/dts/mediatek/ 2>/dev/null || true
-          # DTS Makefile düzenlemesi
           if [ -f arch/arm64/boot/dts/Makefile ]; then
             if ! grep -q "mediatek" arch/arm64/boot/dts/Makefile; then
               echo "subdir-y += mediatek" >> arch/arm64/boot/dts/Makefile
             fi
           fi
-
-          # 3. Config dosyasını kopyala
-          echo "→ biloba_defconfig portlanıyor..."
+          
+          # 3. Config dosyasini kopyala
+          echo "-> biloba_defconfig portlaniyor..."
           cp $BILOBA_DIR/arch/arm64/configs/biloba_defconfig arch/arm64/configs/ 2>/dev/null || true
-
-          # 4. Dokunmatik ekran sürücülerini kopyala
-          echo "→ Dokunmatik sürücüler portlanıyor..."
+          
+          # 4. Dokunmatik ekran suruculerini kopyala
+          echo "-> Dokunmatik suruculer portlaniyor..."
           mkdir -p drivers/input/touchscreen/mediatek
           cp -r $BILOBA_DIR/drivers/input/touchscreen/mediatek/* drivers/input/touchscreen/mediatek/ 2>/dev/null || true
           if ! grep -q "mediatek" drivers/input/touchscreen/Makefile; then
             echo "obj-y += mediatek/" >> drivers/input/touchscreen/Makefile
           fi
-
-          # 5. Power/PMIC sürücülerini kopyala
-          echo "→ Power sürücüleri portlanıyor..."
+          
+          # 5. Power/PMIC suruculerini kopyala
+          echo "-> Power suruculeri portlaniyor..."
           mkdir -p drivers/power
           cp -r $BILOBA_DIR/drivers/power/* drivers/power/ 2>/dev/null || true
-
-          # 6. Clock sürücülerini kopyala
-          echo "→ Clock sürücüleri portlanıyor..."
+          
+          # 6. Clock suruculerini kopyala
+          echo "-> Clock suruculeri portlaniyor..."
           mkdir -p drivers/clk/mediatek
           cp -r $BILOBA_DIR/drivers/clk/mediatek/* drivers/clk/mediatek/ 2>/dev/null || true
-
-          # 7. IRQ chip sürücülerini kopyala
-          echo "→ IRQ sürücüleri portlanıyor..."
+          
+          # 7. IRQ chip suruculerini kopyala
+          echo "-> IRQ suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/irqchip/*mediatek* drivers/irqchip/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/irqchip/*mt67* drivers/irqchip/ 2>/dev/null || true
-
-          # 8. SoC sürücülerini kopyala
-          echo "→ SoC sürücüleri portlanıyor..."
+          
+          # 8. SoC suruculerini kopyala
+          echo "-> SoC suruculeri portlaniyor..."
           mkdir -p drivers/soc/mediatek
           cp -r $BILOBA_DIR/drivers/soc/mediatek/* drivers/soc/mediatek/ 2>/dev/null || true
           if ! grep -q "mediatek" drivers/soc/Makefile; then
             echo "obj-y += mediatek/" >> drivers/soc/Makefile
           fi
-
-          # 9. Pin kontrol sürücülerini kopyala
-          echo "→ Pin kontrol sürücüleri portlanıyor..."
+          
+          # 9. Pin kontrol suruculerini kopyala
+          echo "-> Pin kontrol suruculeri portlaniyor..."
           mkdir -p drivers/pinctrl/mediatek
           cp -r $BILOBA_DIR/drivers/pinctrl/mediatek/* drivers/pinctrl/mediatek/ 2>/dev/null || true
-
-          # 10. SPI sürücülerini kopyala
-          echo "→ SPI sürücüleri portlanıyor..."
+          
+          # 10. SPI suruculerini kopyala
+          echo "-> SPI suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/spi/*mediatek* drivers/spi/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/spi/*mt67* drivers/spi/ 2>/dev/null || true
-
-          # 11. I2C sürücülerini kopyala
-          echo "→ I2C sürücüleri portlanıyor..."
+          
+          # 11. I2C suruculerini kopyala
+          echo "-> I2C suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/i2c/*mediatek* drivers/i2c/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/i2c/*mt67* drivers/i2c/ 2>/dev/null || true
-
-          # 12. USB sürücülerini kopyala
-          echo "→ USB sürücüleri portlanıyor..."
+          
+          # 12. USB suruculerini kopyala
+          echo "-> USB suruculeri portlaniyor..."
           cp -r $BILOBA_DIR/drivers/usb/* drivers/usb/ 2>/dev/null || true
-
-          # 13. MMC sürücülerini kopyala
-          echo "→ MMC sürücüleri portlanıyor..."
+          
+          # 13. MMC suruculerini kopyala
+          echo "-> MMC suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/mmc/*mediatek* drivers/mmc/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/mmc/*mt67* drivers/mmc/ 2>/dev/null || true
-
-          # 14. Thermal sürücülerini kopyala
-          echo "→ Thermal sürücüleri portlanıyor..."
+          
+          # 14. Thermal suruculerini kopyala
+          echo "-> Thermal suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/thermal/*mediatek* drivers/thermal/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/thermal/*mt67* drivers/thermal/ 2>/dev/null || true
-
-          # 15. CPUFreq sürücülerini kopyala
-          echo "→ CPUFreq sürücüleri portlanıyor..."
+          
+          # 15. CPUFreq suruculerini kopyala
+          echo "-> CPUFreq suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/cpufreq/*mediatek* drivers/cpufreq/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/cpufreq/*mt67* drivers/cpufreq/ 2>/dev/null || true
-
-          # 16. CPUIdle sürücülerini kopyala
-          echo "→ CPUIdle sürücüleri portlanıyor..."
+          
+          # 16. CPUIdle suruculerini kopyala
+          echo "-> CPUIdle suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/cpuidle/*mediatek* drivers/cpuidle/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/cpuidle/*mt67* drivers/cpuidle/ 2>/dev/null || true
-
-          # 17. Watchdog sürücülerini kopyala
-          echo "→ Watchdog sürücüleri portlanıyor..."
+          
+          # 17. Watchdog suruculerini kopyala
+          echo "-> Watchdog suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/watchdog/*mediatek* drivers/watchdog/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/watchdog/*mt67* drivers/watchdog/ 2>/dev/null || true
-
-          # 18. LED sürücülerini kopyala
-          echo "→ LED sürücüleri portlanıyor..."
+          
+          # 18. LED suruculerini kopyala
+          echo "-> LED suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/leds/*mediatek* drivers/leds/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/leds/*mt67* drivers/leds/ 2>/dev/null || true
-
-          # 19. Network sürücülerini kopyala
-          echo "→ Network sürücüleri portlanıyor..."
+          
+          # 19. Network suruculerini kopyala
+          echo "-> Network suruculeri portlaniyor..."
           cp $BILOBA_DIR/drivers/net/*mediatek* drivers/net/ 2>/dev/null || true
           cp $BILOBA_DIR/drivers/net/*mt67* drivers/net/ 2>/dev/null || true
-
-          # 20. GPU/DRM sürücülerini kopyala
-          echo "→ GPU/DRM sürücüleri portlanıyor..."
+          
+          # 20. GPU/DRM suruculerini kopyala
+          echo "-> GPU/DRM suruculeri portlaniyor..."
           mkdir -p drivers/gpu/drm/mediatek
           cp -r $BILOBA_DIR/drivers/gpu/drm/mediatek/* drivers/gpu/drm/mediatek/ 2>/dev/null || true
-
-          # 21. Sound sürücülerini kopyala (sadece MTK özel)
-          echo "→ Sound sürücüleri portlanıyor..."
+          
+          # 21. Sound suruculerini kopyala (sadece MTK ozel)
+          echo "-> Sound suruculeri portlaniyor..."
           for f in $BILOBA_DIR/sound/soc/mediatek/*; do
             if [ -e "$f" ]; then
               mkdir -p sound/soc/mediatek
               cp -r "$f" sound/soc/mediatek/ 2>/dev/null || true
             fi
           done
-
-          # 22. SADECE MTK ÖZEL Header'ları kopyala
-          # NOT: include/trace/events/ ve include/linux/tracepoint.h gibi temel
-          # tracepoint header'ları upstream 4.14.336 ile uyumlu olmalıdır.
-          # Biloba'dan kopyalanırsa PG_workingset, PG_iommu, pm_qos tracepoint
-          # argüman sayısı gibi derleme hataları oluşur.
-          echo "→ MTK özel header'ları portlanıyor..."
-
-          # dt-bindings (device tree binding'leri - güvenli)
+          
+          # 22. SADECE MTK OZEL Header'lari kopyala
+          echo "-> MTK ozel header'lari portlaniyor..."
+          
+          # dt-bindings (device tree binding'leri - guvenli)
           if [ -d "$BILOBA_DIR/include/dt-bindings" ]; then
             cp -r $BILOBA_DIR/include/dt-bindings/* include/dt-bindings/ 2>/dev/null || true
-            echo "  ✓ dt-bindings kopyalandı"
+            echo "  + dt-bindings kopyalandi"
           fi
-
-          # include/linux/soc/mediatek/ (mtk-cmdq.h gibi önemli header'lar)
+          
+          # include/linux/soc/mediatek/ (mtk-cmdq.h gibi onemli header'lar)
           if [ -d "$BILOBA_DIR/include/linux/soc/mediatek" ]; then
             mkdir -p include/linux/soc/mediatek
             cp -r $BILOBA_DIR/include/linux/soc/mediatek/* include/linux/soc/mediatek/ 2>/dev/null || true
-            echo "  ✓ include/linux/soc/mediatek/ kopyalandı"
-            ls -la include/linux/soc/mediatek/ || echo "  ⚠ Dizin boş veya kopyalanamadı"
+            echo "  + include/linux/soc/mediatek/ kopyalandi"
           fi
-
+          
           # include/soc/mediatek/ (alternatif konum)
           if [ -d "$BILOBA_DIR/include/soc/mediatek" ]; then
             mkdir -p include/soc/mediatek
             cp -r $BILOBA_DIR/include/soc/mediatek/* include/soc/mediatek/ 2>/dev/null || true
-            echo "  ✓ include/soc/mediatek/ kopyalandı"
+            echo "  + include/soc/mediatek/ kopyalandi"
           fi
-
-          # Tüm MTK ile ilgili header'ları find ile bul ve kopyala
-          echo "  → find ile MTK header'ları aranıyor..."
+          
+          # include/mailbox/ dizinini de biloba'dan kopyala
+          if [ -d "$BILOBA_DIR/include/mailbox" ]; then
+            mkdir -p include/mailbox
+            cp -r $BILOBA_DIR/include/mailbox/* include/mailbox/ 2>/dev/null || true
+            echo "  + include/mailbox/ kopyalandi"
+          fi
+          
+          # include/linux/mailbox/ dizinini de biloba'dan kopyala
+          if [ -d "$BILOBA_DIR/include/linux/mailbox" ]; then
+            mkdir -p include/linux/mailbox
+            cp -r $BILOBA_DIR/include/linux/mailbox/* include/linux/mailbox/ 2>/dev/null || true
+            echo "  + include/linux/mailbox/ kopyalandi"
+          fi
+          
+          # include/drm/ dizininde upstream'de olmayanlari kopyala
+          if [ -d "$BILOBA_DIR/include/drm" ]; then
+            echo "  + include/drm/ guncelleniyor..."
+            for drm_hdr in $BILOBA_DIR/include/drm/*; do
+              if [ -e "$drm_hdr" ]; then
+                fname=$(basename "$drm_hdr")
+                if [ ! -f "include/drm/$fname" ]; then
+                  cp "$drm_hdr" include/drm/ 2>/dev/null || true
+                fi
+              fi
+            done
+          fi
+          
+          # TUM MTK ile ilgili header'lari find ile bul ve kopyala
+          echo "  + find ile MTK header'lari araniyor..."
           find $BILOBA_DIR/include -type f \( -iname "*mtk*" -o -iname "*mediatek*" -o -iname "*mt67*" -o -iname "*helio*" -o -iname "*dvfsrc*" \) | while read f; do
             rel_path="${f#$BILOBA_DIR/include/}"
             target_dir="include/$(dirname "$rel_path")"
             mkdir -p "$target_dir"
             cp "$f" "$target_dir/" 2>/dev/null || true
           done
-          echo "  ✓ find ile tüm MTK header'ları kopyalandı"
-
-          # Biloba'nın TÜM dizinlerinde helio-dvfsrc-opp.h ara ve include/linux/'a kopyala
-          echo "  → helio-dvfsrc-opp.h aranıyor..."
-          mkdir -p include/linux
-          HELIO_HDR=$(find $BILOBA_DIR -name "helio-dvfsrc-opp.h" -type f 2>/dev/null | head -1)
-          if [ -n "$HELIO_HDR" ]; then
-            cp "$HELIO_HDR" include/linux/helio-dvfsrc-opp.h
-            echo "  ✓ helio-dvfsrc-opp.h bulundu ve kopyalandı: $HELIO_HDR"
-          else
-            echo "  ⚠ helio-dvfsrc-opp.h bulunamadı, dummy oluşturuluyor..."
-            cat > include/linux/helio-dvfsrc-opp.h << 'HELIO_EOF'
-          /* Dummy helio-dvfsrc-opp.h - Auto-generated for 4.14.336 port */
-          #ifndef _HELIO_DVFSRC_OPP_H_
-          #define _HELIO_DVFSRC_OPP_H_
-
-          #include <linux/types.h>
-
-          struct dvfsrc_opp {
-              u32 vcore_opp;
-              u32 dram_opp;
-              u32 vcore_uv;
-              u32 dram_khz;
-          };
-
-          int helio_dvfsrc_get_opp_count(void);
-          const struct dvfsrc_opp *helio_dvfsrc_get_opp(int idx);
-          int helio_dvfsrc_get_dram_opp(void);
-          int helio_dvfsrc_get_vcore_opp(void);
-          void helio_dvfsrc_set_dram_opp(int opp);
-          void helio_dvfsrc_set_vcore_opp(int opp);
-
-          #endif /* _HELIO_DVFSRC_OPP_H_ */
-          HELIO_EOF
-            echo "  ✓ Dummy helio-dvfsrc-opp.h oluşturuldu"
-          fi
-          ls -la include/linux/helio-dvfsrc-opp.h || echo "  ✗ helio-dvfsrc-opp.h hala yok!"
-
-          # Kritik eksik header'ları kontrol et ve bulunamazsa dummy oluştur
-          echo "  → Kritik eksik header'lar kontrol ediliyor..."
-
-          # include/mailbox/ dizinini de biloba'dan kopyala
-          if [ -d "$BILOBA_DIR/include/mailbox" ]; then
-            mkdir -p include/mailbox
-            cp -r $BILOBA_DIR/include/mailbox/* include/mailbox/ 2>/dev/null || true
-            echo "  ✓ include/mailbox/ kopyalandı"
-          fi
-
-          # include/linux/mailbox/ dizinini de biloba'dan kopyala
-          if [ -d "$BILOBA_DIR/include/linux/mailbox" ]; then
-            mkdir -p include/linux/mailbox
-            cp -r $BILOBA_DIR/include/linux/mailbox/* include/linux/mailbox/ 2>/dev/null || true
-            echo "  ✓ include/linux/mailbox/ kopyalandı"
-          fi
-
-          # include/drm/ dizinini biloba'dan kopyala (MTK DRM sürücüleri için gerekli)
-          if [ -d "$BILOBA_DIR/include/drm" ]; then
-            echo "  → include/drm/ kopyalanıyor..."
-            for drm_hdr in $BILOBA_DIR/include/drm/*; do
-              if [ -e "$drm_hdr" ]; then
-                fname=$(basename "$drm_hdr")
-                # Sadece upstream'de olmayanları kopyala (çakışma riskini azalt)
-                if [ ! -f "include/drm/$fname" ]; then
-                  cp "$drm_hdr" include/drm/ 2>/dev/null || true
-                  echo "    + $fname kopyalandı"
-                fi
-              fi
-            done
-            echo "  ✓ include/drm/ güncellendi"
-          fi
-
-          # mtk-cmdq-mailbox.h kontrolü (include/mailbox/ altında)
-          if [ ! -f "include/linux/mailbox/mtk-cmdq-mailbox.h" ] && [ ! -f "include/mailbox/mtk-cmdq-mailbox.h" ]; then
-            echo "  ⚠ mtk-cmdq-mailbox.h bulunamadı, dummy oluşturuluyor..."
-            mkdir -p include/linux/mailbox
-            cat << 'MBOX_EOF' > include/linux/mailbox/mtk-cmdq-mailbox.h
-          /* Dummy mtk-cmdq-mailbox.h - Auto-generated for 4.14.336 port */
-          #ifndef _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H
-          #define _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H
-
-          #include <linux/types.h>
-          #include <linux/mailbox_client.h>
-          #include <linux/mailbox_controller.h>
-
-          struct cmdq_pkt {
-              void *buf;
-              size_t cnt;
-          };
-
-          struct cmdq_client {
-              struct mbox_client client;
-              struct mbox_chan *chan;
-          };
-
-          #endif /* _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H */
-          MBOX_EOF
-            echo "  ✓ Dummy mtk-cmdq-mailbox.h oluşturuldu"
-          else
-            echo "  ✓ mtk-cmdq-mailbox.h mevcut"
-          fi
-
-          # drm_writeback.h kontrolü (MTK DRM sürücüleri için)
-          if [ ! -f "include/drm/drm_writeback.h" ]; then
-            echo "  ⚠ drm_writeback.h bulunamadı, dummy oluşturuluyor..."
-            cat << 'DRM_EOF' > include/drm/drm_writeback.h
-          /* Dummy drm_writeback.h - Auto-generated for 4.14.336 port */
-          #ifndef _DRM_DRM_WRITEBACK_H_
-          #define _DRM_DRM_WRITEBACK_H_
-
-          #include <drm/drm_connector.h>
-          #include <drm/drm_mode_object.h>
-
-          struct drm_writeback_connector {
-              struct drm_connector base;
-          };
-
-          static inline int drm_connector_init(struct drm_device *dev,
-                                               struct drm_connector *connector,
-                                               const struct drm_connector_funcs *funcs,
-                                               int connector_type) { return 0; }
-
-          #endif /* _DRM_DRM_WRITEBACK_H_ */
-          DRM_EOF
-            echo "  ✓ Dummy drm_writeback.h oluşturuldu"
-          fi
-
-          # mtk-cmdq.h kontrolü
-          if [ ! -f "include/linux/soc/mediatek/mtk-cmdq.h" ] && [ ! -f "include/soc/mediatek/mtk-cmdq.h" ]; then
-            echo "  ⚠ mtk-cmdq.h bulunamadı, dummy header oluşturuluyor..."
-            mkdir -p include/linux/soc/mediatek
-            cat << 'HDR_EOF' > include/linux/soc/mediatek/mtk-cmdq.h
-          /* Dummy mtk-cmdq.h - Auto-generated for 4.14.336 port */
-          #ifndef _LINUX_SOC_MEDIATEK_MTK_CMDQ_H
-          #define _LINUX_SOC_MEDIATEK_MTK_CMDQ_H
-
-          #include <linux/types.h>
-          #include <linux/err.h>
-          #include <linux/mailbox/mtk-cmdq-mailbox.h>
-
-          struct cmdq_client *cmdq_mbox_create(struct device *dev, int index);
-          void cmdq_mbox_destroy(struct cmdq_client *client);
-          int cmdq_pkt_create(struct cmdq_client *client, struct cmdq_pkt **pkt_out);
-          void cmdq_pkt_destroy(struct cmdq_pkt *pkt);
-          int cmdq_pkt_write(struct cmdq_pkt *pkt, u32 value, u32 addr);
-          int cmdq_pkt_wfe(struct cmdq_pkt *pkt, u32 event);
-          int cmdq_pkt_flush(struct cmdq_pkt *pkt);
-
-          #endif /* _LINUX_SOC_MEDIATEK_MTK_CMDQ_H */
-          HDR_EOF
-            echo "  ✓ Dummy mtk-cmdq.h oluşturuldu"
-          else
-            echo "  ✓ mtk-cmdq.h mevcut"
-          fi
-
-          # SADECE mediatek/mt67 ile ilgili linux header'ları (dosya adı bazlı)
+          
+          # SADECE mediatek/mt67 ile ilgili linux header'lari (dosya adi bazli)
           for hdr in $BILOBA_DIR/include/linux/*mediatek* $BILOBA_DIR/include/linux/*mt67*; do
             if [ -e "$hdr" ]; then
               cp "$hdr" include/linux/ 2>/dev/null || true
@@ -380,19 +248,16 @@ jobs:
               cp "$hdr" include/uapi/linux/ 2>/dev/null || true
             fi
           done
-
-          # trace/events altında SADECE mediatek ile ilgili trace header'ları varsa
+          
+          # trace/events altinda SADECE mediatek ile ilgili trace header'lari varsa
           for trc in $BILOBA_DIR/include/trace/events/*mediatek* $BILOBA_DIR/include/trace/events/*mt67*; do
             if [ -e "$trc" ]; then
               cp "$trc" include/trace/events/ 2>/dev/null || true
             fi
           done
-
-          echo "  → Kopyalanan header'lar listesi:"
-          find include -type f \( -iname "*mtk*" -o -iname "*mediatek*" -o -iname "*mt67*" \) | head -30 || true
-
-          # 23. Arch dosyalarını kopyala (sadece biloba özel)
-          echo "→ Arch dosyaları portlanıyor..."
+          
+          # 23. Arch dosyalarini kopyala (sadece biloba ozel)
+          echo "-> Arch dosyalari portlaniyor..."
           if [ -d "$BILOBA_DIR/arch/arm64/kernel" ]; then
             cp $BILOBA_DIR/arch/arm64/kernel/*mediatek* arch/arm64/kernel/ 2>/dev/null || true
             cp $BILOBA_DIR/arch/arm64/kernel/*mt67* arch/arm64/kernel/ 2>/dev/null || true
@@ -401,18 +266,127 @@ jobs:
             cp $BILOBA_DIR/arch/arm64/mm/*mediatek* arch/arm64/mm/ 2>/dev/null || true
             cp $BILOBA_DIR/arch/arm64/mm/*mt67* arch/arm64/mm/ 2>/dev/null || true
           fi
-
+          
           echo "::endgroup::"
-          echo "SUCCESS: MT6768 (Biloba) sürücüleri 4.14.336'ya portlandı."
-          echo "NOT: Derleme hataları çıkarsa, API farklılıklarından kaynaklanıyor olabilir."
+          echo "SUCCESS: MT6768 (Biloba) suruculeri 4.14.336'ya portlandi."
+          echo "NOT: Derleme hatalari cikarsa, API farkliliklarindan kaynaklaniyor olabilir."
 
-      - name: OEM Eksik Firmware Yaması (Kapsamlı Dummy Injection)
+      - name: Eksik MTK Header'lari Icin Dummy Olustur
         run: |
           cd $KERNEL_DIR
-          echo "::group::Dokunmatik Panel (Focaltech) Firmware Yamaları"
+          echo "::group::Eksik Header Dummy'lari Olusturuluyor"
+          
+          python3 << PYEOF
+import os
 
+# mtk-cmdq-mailbox.h
+os.makedirs('include/linux/mailbox', exist_ok=True)
+if not os.path.exists('include/linux/mailbox/mtk-cmdq-mailbox.h'):
+    with open('include/linux/mailbox/mtk-cmdq-mailbox.h', 'w') as f:
+        f.write("""/* Dummy mtk-cmdq-mailbox.h - Auto-generated for 4.14.336 port */
+#ifndef _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H
+#define _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H
+
+#include <linux/types.h>
+#include <linux/mailbox_client.h>
+#include <linux/mailbox_controller.h>
+
+struct cmdq_pkt {
+    void *buf;
+    size_t cnt;
+};
+
+struct cmdq_client {
+    struct mbox_client client;
+    struct mbox_chan *chan;
+};
+
+#endif /* _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H */
+""")
+    print('  + Dummy mtk-cmdq-mailbox.h olusturuldu')
+
+# mtk-cmdq.h
+os.makedirs('include/linux/soc/mediatek', exist_ok=True)
+if not os.path.exists('include/linux/soc/mediatek/mtk-cmdq.h'):
+    with open('include/linux/soc/mediatek/mtk-cmdq.h', 'w') as f:
+        f.write("""/* Dummy mtk-cmdq.h - Auto-generated for 4.14.336 port */
+#ifndef _LINUX_SOC_MEDIATEK_MTK_CMDQ_H
+#define _LINUX_SOC_MEDIATEK_MTK_CMDQ_H
+
+#include <linux/types.h>
+#include <linux/err.h>
+#include <linux/mailbox/mtk-cmdq-mailbox.h>
+
+struct cmdq_client *cmdq_mbox_create(struct device *dev, int index);
+void cmdq_mbox_destroy(struct cmdq_client *client);
+int cmdq_pkt_create(struct cmdq_client *client, struct cmdq_pkt **pkt_out);
+void cmdq_pkt_destroy(struct cmdq_pkt *pkt);
+int cmdq_pkt_write(struct cmdq_pkt *pkt, u32 value, u32 addr);
+int cmdq_pkt_wfe(struct cmdq_pkt *pkt, u32 event);
+int cmdq_pkt_flush(struct cmdq_pkt *pkt);
+
+#endif /* _LINUX_SOC_MEDIATEK_MTK_CMDQ_H */
+""")
+    print('  + Dummy mtk-cmdq.h olusturuldu')
+
+# drm_writeback.h
+os.makedirs('include/drm', exist_ok=True)
+if not os.path.exists('include/drm/drm_writeback.h'):
+    with open('include/drm/drm_writeback.h', 'w') as f:
+        f.write("""/* Dummy drm_writeback.h - Auto-generated for 4.14.336 port */
+#ifndef _DRM_DRM_WRITEBACK_H_
+#define _DRM_DRM_WRITEBACK_H_
+
+#include <drm/drm_connector.h>
+#include <drm/drm_mode_object.h>
+
+struct drm_writeback_connector {
+    struct drm_connector base;
+};
+
+#endif /* _DRM_DRM_WRITEBACK_H_ */
+""")
+    print('  + Dummy drm_writeback.h olusturuldu')
+
+# helio-dvfsrc-opp.h
+os.makedirs('include/linux', exist_ok=True)
+if not os.path.exists('include/linux/helio-dvfsrc-opp.h'):
+    with open('include/linux/helio-dvfsrc-opp.h', 'w') as f:
+        f.write("""/* Dummy helio-dvfsrc-opp.h - Auto-generated for 4.14.336 port */
+#ifndef _HELIO_DVFSRC_OPP_H_
+#define _HELIO_DVFSRC_OPP_H_
+
+#include <linux/types.h>
+
+struct dvfsrc_opp {
+    u32 vcore_opp;
+    u32 dram_opp;
+    u32 vcore_uv;
+    u32 dram_khz;
+};
+
+int helio_dvfsrc_get_opp_count(void);
+const struct dvfsrc_opp *helio_dvfsrc_get_opp(int idx);
+int helio_dvfsrc_get_dram_opp(void);
+int helio_dvfsrc_get_vcore_opp(void);
+void helio_dvfsrc_set_dram_opp(int opp);
+void helio_dvfsrc_set_vcore_opp(int opp);
+
+#endif /* _HELIO_DVFSRC_OPP_H_ */
+""")
+    print('  + Dummy helio-dvfsrc-opp.h olusturuldu')
+
+print('SUCCESS: Tum dummy header'lar olusturuldu')
+PYEOF
+          echo "::endgroup::"
+
+      - name: OEM Eksik Firmware Yamasi (Kapsamli Dummy Injection)
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::Dokunmatik Panel (Focaltech) Firmware Yamalari"
+          
           mkdir -p drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware
-
+          
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_tianma_v0c.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_huaxing_v0d.i
@@ -420,162 +394,150 @@ jobs:
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample1.i
           echo "0x00" > drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware/fw_sample2.i
-
+          
           echo "::endgroup::"
 
-      - name: ZRAM Gelişmiş Kapasite ve Kullanım Yaması (8GB Disk / 6GB Limit)
+      - name: ZRAM Gelismis Kapasite ve Kullanim Yamasi (8GB Disk / 6GB Limit)
         run: |
           cd $KERNEL_DIR
-          echo "::group::ZRAM Çekirdek Seviyesi Sürücü Enjeksiyonu"
-
+          echo "::group::ZRAM Cekirdek Seviyesi Surucu Enjeksiyonu"
+          
           python3 -c '
-          import os
-          filepath = "drivers/block/zram/zram_drv.c"
-          if os.path.exists(filepath):
-              with open(filepath, "r") as f:
-                  code = f.read()
-
-              if "static ssize_t disksize_store" in code:
-                  pos = code.find("static ssize_t disksize_store")
-                  brace = code.find("{", pos)
-                  if brace != -1:
-                      code = code[:brace+1] + "\n\tbuf = \"8G\";\n" + code[brace+1:]
-
-              if "static ssize_t mem_limit_store" in code:
-                  pos = code.find("static ssize_t mem_limit_store")
-                  brace = code.find("{", pos)
-                  if brace != -1:
-                      code = code[:brace+1] + "\n\tbuf = \"6G\";\n" + code[brace+1:]
-
-              if "zram->disksize = disksize;" in code:
-                  code = code.replace("zram->disksize = disksize;", "zram->disksize = disksize;\n\tzram->limit_pages = 6ULL * 1024 * 1024 * 1024 >> PAGE_SHIFT;")
-
-              with open(filepath, "w") as f:
-                  f.write(code)
-              print("SUCCESS: ZRAM kilitlendi.")
+import os
+filepath = "drivers/block/zram/zram_drv.c"
+if os.path.exists(filepath):
+    with open(filepath, "r") as f:
+        code = f.read()
+    
+    if "static ssize_t disksize_store" in code:
+        pos = code.find("static ssize_t disksize_store")
+        brace = code.find("{", pos)
+        if brace != -1:
+            code = code[:brace+1] + "\n\tbuf = \"8G\";\n" + code[brace+1:]
+    
+    if "static ssize_t mem_limit_store" in code:
+        pos = code.find("static ssize_t mem_limit_store")
+        brace = code.find("{", pos)
+        if brace != -1:
+            code = code[:brace+1] + "\n\tbuf = \"6G\";\n" + code[brace+1:]
+    
+    if "zram->disksize = disksize;" in code:
+        code = code.replace("zram->disksize = disksize;", "zram->disksize = disksize;\n\tzram->limit_pages = 6ULL * 1024 * 1024 * 1024 >> PAGE_SHIFT;")
+    
+    with open(filepath, "w") as f:
+        f.write(code)
+    print("SUCCESS: ZRAM kilitlendi.")
           '
           echo "::endgroup::"
 
-      - name: Kingston Fury 32GB Sanal Bellek Cihaz Sınıfı Enjeksiyonu (Advanced Binary Mode)
+      - name: Kingston Fury 32GB Sanal Bellek Cihaz Sinifi Enjeksiyonu (Advanced Binary Mode)
         run: |
           cd $KERNEL_DIR
-          echo "::group::Native Virtual Memory Device Donanım Yapısı Enjekte Ediliyor"
+          echo "::group::Native Virtual Memory Device Donanim Yapisi Enjekte Ediliyor"
+          
+          python3 << PYEOF
+with open("drivers/base/kingston_fury.c", "w") as f:
+    f.write(r"""#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/device.h>
+#include <linux/sysfs.h>
+#include <linux/string.h>
 
-          # Resmi Aygıt Sınıfı ve İkili (Binary) Veri Bloklu Sürücü Tasarımı
-          cat << 'EOF' > drivers/base/kingston_fury.c
-          #include <linux/module.h>
-          #include <linux/kernel.h>
-          #include <linux/init.h>
-          #include <linux/device.h>
-          #include <linux/sysfs.h>
-          #include <linux/string.h>
+static struct class *kf_class;
+static struct device *kf_device;
 
-          static struct class *kf_class;
-          static struct device *kf_device;
+static const unsigned char kf_hardware_binary[] = {
+    0x23, 0x4B, 0x49, 0x4E, 0x47, 0x53, 0x54, 0x4F,
+    0x4E, 0x20, 0x46, 0x55, 0x52, 0x59, 0x20, 0x33,
+    0x32, 0x47, 0x42, 0x00, 0x01, 0x02, 0x03, 0x04,
+    0x0B, 0x40, 0x0E, 0x0C, 0x12, 0x01, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x85, 0x9B, 0xFF, 0x00, 0x02, 0x00, 0x00, 0x00,
+    0x46, 0x55, 0x52, 0x59, 0x58, 0x4D, 0x50, 0x31,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03
+};
 
-          // Kingston Fury Donanım Kimliği ve XMP Karakteristiklerini Simüle Eden 64-Baytlık Saf İkili (Binary) Kod Bloğu
-          static const unsigned char kf_hardware_binary[] = {
-              0x23, 0x4B, 0x49, 0x4E, 0x47, 0x53, 0x54, 0x4F, // "KINGSTON" ASCII başlığı
-              0x4E, 0x20, 0x46, 0x55, 0x52, 0x59, 0x20, 0x33, // "N FURY 3"
-              0x32, 0x47, 0x42, 0x00, 0x01, 0x02, 0x03, 0x04, // "2GB" Kapasite İmzası
-              0x0B, 0x40, 0x0E, 0x0C, 0x12, 0x01, 0x00, 0x00, // Çekirdek JEDEC Donanım Zamanlamaları
-              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-              0x85, 0x9B, 0xFF, 0x00, 0x02, 0x00, 0x00, 0x00, // XMP Donanım Voltaj Profili (1.35V Simülasyonu)
-              0x46, 0x55, 0x52, 0x59, 0x58, 0x4D, 0x50, 0x31, // "FURYXMP1" Binary Profil Mührü
-              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03  // Revizyon Kapanış Kodu
-          };
+static ssize_t vendor_show(struct device *dev, struct device_attribute *attr, char *buf) {
+    return sprintf(buf, "Kingston\n");
+}
+static ssize_t model_show(struct device *dev, struct device_attribute *attr, char *buf) {
+    return sprintf(buf, "Fury Renegade Virtual High-Speed\n");
+}
+static ssize_t capacity_bytes_show(struct device *dev, struct device_attribute *attr, char *buf) {
+    return sprintf(buf, "34359738368\n");
+}
+static ssize_t clock_speed_mhz_show(struct device *dev, struct device_attribute *attr, char *buf) {
+    return sprintf(buf, "4600 MHz\n");
+}
+static ssize_t type_show(struct device *dev, struct device_attribute *attr, char *buf) {
+    return sprintf(buf, "Virtual Memory Device (Zero-Footprint Topology Mode)\n");
+}
 
-          // Metinsel Özellik Gösterimleri
-          static ssize_t vendor_show(struct device *dev, struct device_attribute *attr, char *buf) {
-              return sprintf(buf, "Kingston\n");
-          }
-          static ssize_t model_show(struct device *dev, struct device_attribute *attr, char *buf) {
-              return sprintf(buf, "Fury Renegade Virtual High-Speed\n");
-          }
-          static ssize_t capacity_bytes_show(struct device *dev, struct device_attribute *attr, char *buf) {
-              return sprintf(buf, "34359738368\n"); // Tam 32 GB
-          }
-          static ssize_t clock_speed_mhz_show(struct device *dev, struct device_attribute *attr, char *buf) {
-              return sprintf(buf, "4600 MHz\n"); // Sanal Frekans Sınırı
-          }
-          static ssize_t type_show(struct device *dev, struct device_attribute *attr, char *buf) {
-              return sprintf(buf, "Virtual Memory Device (Zero-Footprint Topology Mode)\n");
-          }
+static DEVICE_ATTR_RO(vendor);
+static DEVICE_ATTR_RO(model);
+static DEVICE_ATTR_RO(capacity_bytes);
+static DEVICE_ATTR_RO(clock_speed_mhz);
+static DEVICE_ATTR_RO(type);
 
-          static DEVICE_ATTR_RO(vendor);
-          static DEVICE_ATTR_RO(model);
-          static DEVICE_ATTR_RO(capacity_bytes);
-          static DEVICE_ATTR_RO(clock_speed_mhz);
-          static DEVICE_ATTR_RO(type);
+static ssize_t kf_binary_read(struct file *filp, struct kobject *kobj,
+                              struct bin_attribute *bin_attribute,
+                              char *buf, loff_t off, size_t count) {
+    return memory_read_from_buffer(buf, count, &off, kf_hardware_binary, sizeof(kf_hardware_binary));
+}
 
-          // Sistem araçlarının ham donanım imzası okuması için oluşturulan Binary Aygıt Düğümü
-          static ssize_t kf_binary_read(struct file *filp, struct kobject *kobj,
-                                        struct bin_attribute *bin_attribute,
-                                        char *buf, loff_t off, size_t count) {
-              return memory_read_from_buffer(buf, count, &off, kf_hardware_binary, sizeof(kf_hardware_binary));
-          }
+static struct bin_attribute kf_bin_attr = {
+    .attr = { .name = "raw_hardware_specs", .mode = 0444 },
+    .size = sizeof(kf_hardware_binary),
+    .read = kf_binary_read,
+};
 
-          static struct bin_attribute kf_bin_attr = {
-              .attr = { .name = "raw_hardware_specs", .mode = 0444 },
-              .size = sizeof(kf_hardware_binary),
-              .read = kf_binary_read,
-          };
+static int __init kingston_fury_device_init(void) {
+    int ret;
+    kf_class = class_create(THIS_MODULE, "virtual_memory");
+    if (IS_ERR(kf_class)) return PTR_ERR(kf_class);
+    kf_device = device_create(kf_class, NULL, MKDEV(0, 0), NULL, "kingston_fury0");
+    if (IS_ERR(kf_device)) {
+        class_destroy(kf_class);
+        return PTR_ERR(kf_device);
+    }
+    ret = device_create_file(kf_device, &dev_attr_vendor);
+    ret = device_create_file(kf_device, &dev_attr_model);
+    ret = device_create_file(kf_device, &dev_attr_capacity_bytes);
+    ret = device_create_file(kf_device, &dev_attr_clock_speed_mhz);
+    ret = device_create_file(kf_device, &dev_attr_type);
+    ret = device_create_bin_file(kf_device, &kf_bin_attr);
+    return 0;
+}
 
-          static int __init kingston_fury_device_init(void) {
-              int ret;
-
-              // 1. Çekirdeğe "virtual_memory" adında resmi bir aygıt sınıfı kaydediyoruz
-              kf_class = class_create(THIS_MODULE, "virtual_memory");
-              if (IS_ERR(kf_class)) return PTR_ERR(kf_class);
-
-              // 2. Bu sınıfın altına "kingston_fury0" isimli resmi sanal bellek cihazını bağlıyoruz
-              kf_device = device_create(kf_class, NULL, MKDEV(0, 0), NULL, "kingston_fury0");
-              if (IS_ERR(kf_device)) {
-                  class_destroy(kf_class);
-                  return PTR_ERR(kf_device);
-              }
-
-              // 3. Standart sysfs donanım niteliklerini aygıta mühürlüyoruz
-              ret = device_create_file(kf_device, &dev_attr_vendor);
-              ret = device_create_file(kf_device, &dev_attr_model);
-              ret = device_create_file(kf_device, &dev_attr_capacity_bytes);
-              ret = device_create_file(kf_device, &dev_attr_clock_speed_mhz);
-              ret = device_create_file(kf_device, &dev_attr_type);
-
-              // 4. İkili (Binary) donanım imzasını aygıta enjekte ediyoruz
-              ret = device_create_bin_file(kf_device, &kf_bin_attr);
-
-              return 0;
-          }
-
-          device_initcall(kingston_fury_device_init);
-          MODULE_LICENSE("GPL");
-          EOF
-
-          # Sürücüyü derleme ağacına dahil et
+device_initcall(kingston_fury_device_init);
+MODULE_LICENSE("GPL");
+""")
+print('SUCCESS: Kingston Fury resmi Virtual Memory Device yapisi binary destegiyle entegre edildi.')
+PYEOF
+          
           echo "obj-y += kingston_fury.o" >> drivers/base/Makefile
-          echo "SUCCESS: Kingston Fury resmi Virtual Memory Device yapısı binary desteğiyle entegre edildi."
           echo "::endgroup::"
 
-      - name: Resmi Google AOSP Clang İndir (Sadece Frontend)
+      - name: Resmi Google AOSP Clang Indir (Sadece Frontend)
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
 
-      - name: Godmode 4.14.336 Derleme Başlat (Doğrudan Argümanlı)
+      - name: Godmode 4.14.336 Derleme Baslat (Dogrudan Argumanli)
         run: |
           cd $KERNEL_DIR
-
+          
           export PATH="$CLANG_DIR/clang-r383902b/bin:$PATH"
-
+          
           mkdir -p out
-
+          
           # Config'i uygula ve eski config ile senkronize et
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" biloba_defconfig
-
-          # Yeni config seçeneklerini varsayılan değerlerle doldur (non-interactive)
+          
+          # Yeni config seceneklerini varsayilan degerlerle doldur (non-interactive)
           yes "" | make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
-
-          # Gereksiz upstream sürücüleri kapat (telefon kerneli için)
+          
+          # Gereksiz upstream suruculeri kapat (telefon kerneli icin)
           ./scripts/config --file out/.config --disable CONFIG_MEDIA_RC_SUPPORT
           ./scripts/config --file out/.config --disable CONFIG_RC_CORE
           ./scripts/config --file out/.config --disable CONFIG_RC_DECODERS
@@ -595,50 +557,63 @@ jobs:
           ./scripts/config --file out/.config --disable CONFIG_SND_USB_PODHD
           ./scripts/config --file out/.config --disable CONFIG_SND_USB_TONEPORT
           ./scripts/config --file out/.config --disable CONFIG_SND_USB_VARIAX
+          ./scripts/config --file out/.config --disable CONFIG_SND_BCD2000
+          ./scripts/config --file out/.config --disable CONFIG_MEDIA_SUPPORT
+          ./scripts/config --file out/.config --disable CONFIG_VIDEO_V4L2_SUBDEV_API
+          ./scripts/config --file out/.config --disable CONFIG_VIDEO_DEV
+          ./scripts/config --file out/.config --disable CONFIG_VIDEO_V4L2
+          ./scripts/config --file out/.config --disable CONFIG_DVB_CORE
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
-
-          # Eğer dram_ctrl derlenemezse, koşullu derlemeyi devre dışı bırak
+          
+          # Eger dram_ctrl derlenemezse, kosullu derlemeyi devre disi birak
           if [ -f "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile" ]; then
-            sed -i 's/^obj-y.*dram_ctrl/# obj-y disabled for 4.14.336 port - missing helio-dvfsrc-opp.h
-# &/' drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile 2>/dev/null || true
+            python3 -c "
+import re
+with open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile', 'r') as f:
+    content = f.read()
+content = re.sub(r'^obj-y.*dram_ctrl', '# obj-y disabled for 4.14.336 port - missing helio-dvfsrc-opp.h', content, flags=re.M)
+with open('drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile', 'w') as f:
+    f.write(content)
+print('dram_ctrl Makefile disabled if needed')
+"
           fi
-
-          # Derlemeyi başlat ve log dosyasına kaydet
+          
+          # Derlemeyi baslat ve log dosyasina kaydet
           make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" 2>&1 | tee build.log
-
-          # Hata varsa son 50 satırı göster
+          
+          # Hata varsa son 50 satiri goster
           if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-            echo "::error::Derleme hatası tespit edildi!"
-            echo "::group::Son 50 hata satırı"
+            echo "::error::Derleme hatasi tespit edildi!"
+            echo "::group::Son 50 hata satiri"
             grep -n -i "error:" build.log | tail -50 || true
             echo "::endgroup::"
-            echo "::group::Son 100 derleme satırı"
+            echo "::group::Son 100 derleme satiri"
             tail -100 build.log
             echo "::endgroup::"
             exit 1
           fi
 
-      - name: Derleme Doğrulama Kontrolü (Sanity Check)
+      - name: Derleme Dogrulama Kontrolu (Sanity Check)
         run: |
           if [ ! -f $KERNEL_DIR/out/arch/arm64/boot/Image ]; then
-            echo "::error::Kritik Hata: Godmode 4.14.336 üretimi Image çıktısı üretemedi."
+            echo "::error::Kritik Hata: Godmode 4.14.336 uretimi Image ciktisi uretemedi."
             exit 1
           fi
 
-      - name: Derleme Logunu Yükle
+      - name: Derleme Logunu Yukle
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: kernel-source/build.log
 
-      - name: Orijinal Image Dosyasını Yükle
+      - name: Orijinal Image Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
           name: godmode-biloba-4.14.336-Image
           path: kernel-source/out/arch/arm64/boot/Image
 
-      - name: Orijinal DTB Dosyalarını Yükle
+      - name: Orijinal DTB Dosyalarini Yukle
         uses: actions/upload-artifact@v4
         with:
           name: godmode-biloba-4.14.336-dtb
