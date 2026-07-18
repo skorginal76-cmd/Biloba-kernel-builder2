@@ -271,21 +271,43 @@ jobs:
           echo "SUCCESS: MT6768 (Biloba) suruculeri 4.14.336'ya portlandi."
           echo "NOT: Derleme hatalari cikarsa, API farkliliklarindan kaynaklaniyor olabilir."
 
-      - name: Eksik MTK Header'lari Icin Dummy Olustur
+      - name: Eksik MTK Header'lari Icin Dummy Olustur (Cakisma Korumali)
         run: |
           cd $KERNEL_DIR
           echo "::group::Eksik Header Dummy'lari Olusturuluyor"
           
           python3 -c '
           import os
+          import subprocess
           import textwrap
           
-          def write_file(path, content):
-              os.makedirs(os.path.dirname(path), exist_ok=True)
-              if not os.path.exists(path):
-                  with open(path, "w") as f:
-                      f.write(textwrap.dedent(content).lstrip())
+          def real_header_exists(basename):
+              """Ported biloba tree icinde ayni isimde GERCEK bir header var mi kontrol et.
+              Varsa dummy yazmiyoruz, cunku enum/fonksiyon cakismasina (redefinition) yol acar."""
+              try:
+                  out = subprocess.run(
+                      ["find", ".", "-type", "f", "-name", basename],
+                      capture_output=True, text=True, timeout=30
+                  ).stdout.strip()
+                  return bool(out)
+              except Exception:
+                  return False
           
+          def write_file(path, content, skip_if_real_conflict=None):
+              if os.path.exists(path):
+                  print(f"  - {path} zaten var, atlaniyor")
+                  return
+              if skip_if_real_conflict and real_header_exists(skip_if_real_conflict):
+                  print(f"  - {path} atlandi: gercek {skip_if_real_conflict} zaten portlanmis (cakisma onlendi)")
+                  return
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              with open(path, "w") as f:
+                  f.write(textwrap.dedent(content).lstrip())
+              print(f"  + {path} olusturuldu")
+          
+          # NOT: mtk_thermal_monitor.h (drivers/misc/mediatek/include/mt-plat/) biloba
+          # kaynagindan zaten geliyor ve ayni enum/fonksiyonlari tanimliyor. Bu yuzden
+          # mach/mtk_thermal.h dummy'sini SADECE o dosya yoksa yaziyoruz.
           write_file("include/mach/mtk_thermal.h", """\
               /* Professional MTK Thermal API Wrapper */
               #ifndef _MACH_MTK_THERMAL_H
@@ -347,8 +369,7 @@ jobs:
               }
               
               #endif /* _MACH_MTK_THERMAL_H */
-          """)
-          print("  + Dummy mach/mtk_thermal.h olusturuldu (Professional API Mode)")
+          """, skip_if_real_conflict="mtk_thermal_monitor.h")
           
           write_file("include/linux/mailbox/mtk-cmdq-mailbox.h", """\
               /* Dummy mtk-cmdq-mailbox.h - Auto-generated for 4.14.336 port */
@@ -370,8 +391,7 @@ jobs:
               };
               
               #endif /* _LINUX_MAILBOX_MTK_CMDQ_MAILBOX_H */
-          """)
-          print("  + Dummy mtk-cmdq-mailbox.h olusturuldu")
+          """, skip_if_real_conflict="mtk-cmdq-mailbox.h")
           
           write_file("include/linux/soc/mediatek/mtk-cmdq.h", """\
               /* Dummy mtk-cmdq.h - Auto-generated for 4.14.336 port */
@@ -391,8 +411,7 @@ jobs:
               int cmdq_pkt_flush(struct cmdq_pkt *pkt);
               
               #endif /* _LINUX_SOC_MEDIATEK_MTK_CMDQ_H */
-          """)
-          print("  + Dummy mtk-cmdq.h olusturuldu")
+          """, skip_if_real_conflict="mtk-cmdq.h")
           
           write_file("include/drm/drm_writeback.h", """\
               /* Dummy drm_writeback.h - Auto-generated for 4.14.336 port */
@@ -407,8 +426,7 @@ jobs:
               };
               
               #endif /* _DRM_DRM_WRITEBACK_H_ */
-          """)
-          print("  + Dummy drm_writeback.h olusturuldu")
+          """, skip_if_real_conflict="drm_writeback.h")
           
           write_file("include/linux/helio-dvfsrc-opp.h", """\
               /* Dummy helio-dvfsrc-opp.h - Auto-generated for 4.14.336 port */
@@ -432,10 +450,53 @@ jobs:
               void helio_dvfsrc_set_vcore_opp(int opp);
               
               #endif /* _HELIO_DVFSRC_OPP_H_ */
-          """)
-          print("  + Dummy helio-dvfsrc-opp.h olusturuldu")
+          """, skip_if_real_conflict="helio-dvfsrc-opp.h")
           
-          print("SUCCESS: Tum dummy headerlar olusturuldu")
+          print("SUCCESS: Dummy header taramasi tamamlandi (cakisanlar atlandi)")
+          '
+          echo "::endgroup::"
+
+      - name: Eksik Yerel (Quoted) Header Referanslarini Otomatik Stub'la
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::drivers/misc/mediatek altinda eksik quoted include taramasi"
+          
+          # drivers/misc/mediatek altindaki .c/.h dosyalarinda gecen
+          # #include "X.h" seklindeki yerel referanslari bul; hedef dosya
+          # ayni klasorde yoksa bos bir stub olustur. Bu, "mtk_cooler_setting.h
+          # file not found" gibi eksik yerel header hatalarini onceden onler.
+          python3 -c '
+          import os
+          import re
+          
+          include_re = re.compile(r"^\s*#include\s+\"([A-Za-z0-9_./-]+\.h)\"")
+          created = 0
+          
+          for root, dirs, files in os.walk("drivers/misc/mediatek"):
+              for fname in files:
+                  if not (fname.endswith(".c") or fname.endswith(".h")):
+                      continue
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath, "r", errors="ignore") as f:
+                          lines = f.readlines()
+                  except Exception:
+                      continue
+                  for line in lines:
+                      m = include_re.match(line)
+                      if not m:
+                          continue
+                      inc = m.group(1)
+                      if "/" in inc:
+                          continue  # relative-path include, dokunma
+                      target = os.path.join(root, inc)
+                      if not os.path.exists(target):
+                          with open(target, "w") as tf:
+                              tf.write(f"/* Auto-stub: {inc} bulunamadi, 4.14.336 portu icin bos birakildi */\n")
+                          created += 1
+                          print(f"  + stub olusturuldu: {target}")
+          
+          print(f"SUCCESS: {created} eksik yerel header stublandi")
           '
           echo "::endgroup::"
 
