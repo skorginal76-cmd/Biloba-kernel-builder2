@@ -500,6 +500,57 @@ jobs:
           '
           echo "::endgroup::"
 
+      - name: Eksik GFP/SLAB Include'larini Otomatik Ekle
+        run: |
+          cd $KERNEL_DIR
+          echo "::group::drivers/misc/mediatek altinda eksik gfp.h/slab.h taramasi"
+          
+          # Bazi biloba .c dosyalari GFP_USER/GFP_KERNEL gibi makrolari kullanip
+          # linux/gfp.h veya linux/slab.h include etmiyor (upstream 4.14.336'da
+          # bu makrolar baska zincirleme header'lar uzerinden gelmeyebiliyor).
+          # "undeclared identifier 'GFP_...'" hatalarini onceden onlemek icin
+          # GFP_ kullanan ama gfp.h/slab.h icermeyen dosyalara otomatik include ekle.
+          python3 -c '
+          import os
+          import re
+          
+          gfp_usage_re = re.compile(r"\bGFP_[A-Z_]+\b")
+          include_re = re.compile(r"^\s*#include\s*[<\"]([A-Za-z0-9_./-]+\.h)[>\"]")
+          patched = 0
+          
+          for root, dirs, files in os.walk("drivers/misc/mediatek"):
+              for fname in files:
+                  if not fname.endswith(".c"):
+                      continue
+                  fpath = os.path.join(root, fname)
+                  try:
+                      with open(fpath, "r", errors="ignore") as f:
+                          content = f.read()
+                  except Exception:
+                      continue
+                  if not gfp_usage_re.search(content):
+                      continue
+                  if "linux/gfp.h" in content or "linux/slab.h" in content:
+                      continue
+                  lines = content.splitlines(keepends=True)
+                  last_include_idx = None
+                  for i, line in enumerate(lines):
+                      if include_re.match(line):
+                          last_include_idx = i
+                  insert_line = "#include <linux/gfp.h>\n"
+                  if last_include_idx is not None:
+                      lines.insert(last_include_idx + 1, insert_line)
+                  else:
+                      lines.insert(0, insert_line)
+                  with open(fpath, "w") as f:
+                      f.writelines(lines)
+                  patched += 1
+                  print(f"  + linux/gfp.h eklendi: {fpath}")
+          
+          print(f"SUCCESS: {patched} dosyaya eksik gfp.h include eklendi")
+          '
+          echo "::endgroup::"
+
       - name: OEM Eksik Firmware Yamasi (Kapsamli Dummy Injection)
         run: |
           cd $KERNEL_DIR
