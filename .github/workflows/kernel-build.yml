@@ -403,6 +403,74 @@ jobs:
           """)
               print('  + Dummy helio-dvfsrc-opp.h olusturuldu')
 
+          # mach/mtk_thermal.h
+          os.makedirs('include/mach', exist_ok=True)
+          if not os.path.exists('include/mach/mtk_thermal.h'):
+          with open('include/mach/mtk_thermal.h', 'w') as f:
+          f.write("""/* Professional MTK Thermal API Wrapper */
+          #ifndef _MACH_MTK_THERMAL_H
+          #define _MACH_MTK_THERMAL_H
+
+          #include <linux/types.h>
+          #include <linux/thermal.h>
+          #include <linux/notifier.h>
+
+          typedef enum {
+            MTK_THERMAL_SENSOR_CPU = 0,
+            MTK_THERMAL_SENSOR_ABB,
+            MTK_THERMAL_SENSOR_AP,
+            MTK_THERMAL_SENSOR_BATTERY,
+            MTK_THERMAL_SENSOR_TSENSE,
+            MTK_THERMAL_SENSOR_COUNT
+              } MTK_THERMAL_SENSOR_ID;
+
+          #define MTK_THERMAL_COOLING_STATE_MIN  0
+          #define MTK_THERMAL_COOLING_STATE_MAX  10
+
+          struct mtk_cooler_platform_data {
+            char type[THERMAL_NAME_LENGTH];
+            int state;
+            int max_state;
+            };
+
+            static inline int mtk_thermal_get_temp(MTK_THERMAL_SENSOR_ID id)
+            {
+            return 40000;
+            }
+
+            static inline struct thermal_cooling_device *mtk_thermal_cooling_device_register(
+              char *type, void *devdata, const struct thermal_cooling_device_ops *ops)
+              {
+              return thermal_cooling_device_register(type, devdata, ops);
+              }
+
+            static inline void mtk_thermal_cooling_device_unregister(struct thermal_cooling_device *cdev)
+              {
+              if (cdev)
+              thermal_cooling_device_unregister(cdev);
+              }
+
+              static inline int mtk_thermal_zone_bind_cooling_device(
+              struct thermal_zone_device *tz, int trip,
+              struct thermal_cooling_device *cdev,
+              unsigned long upper, unsigned long lower,
+              unsigned int weight)
+              {
+              return thermal_zone_bind_cooling_device(tz, trip, cdev, upper, lower, weight);
+              }
+
+              static inline int mtk_thermal_zone_unbind_cooling_device(
+              struct thermal_zone_device *tz, int trip,
+              struct thermal_cooling_device *cdev)
+              {
+              return thermal_zone_unbind_cooling_device(tz, trip, cdev);
+              }
+
+              #endif /* _MACH_MTK_THERMAL_H */
+              """)
+          print('  + Dummy mach/mtk_thermal.h olusturuldu (Professional API Mode)')
+
+
           print("SUCCESS: Tum dummy header'lar olusturuldu")
           PYEOF
           echo "::endgroup::"
