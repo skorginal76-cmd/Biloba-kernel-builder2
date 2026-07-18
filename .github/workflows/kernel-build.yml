@@ -746,6 +746,21 @@ jobs:
             echo "obj-y :=" >> drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile
           fi
           
+          # eas_ctrl, MTK'nin kernel/sched icine gomdugu kendi EAS (Energy Aware
+          # Scheduling) yamalarina bagli (NR_CGROUP, EAS_*_KIR makrolari,
+          # sysctl_sched_sync_hint_enable degiskeni gibi). Bu core scheduler
+          # yamalari portlanan surucu agacinin disinda ve mainline 4.14.336'da
+          # yok; dummy header ile cozulemeyecek kadar derin bir bagimlilik
+          # oldugundan dram_ctrl ile ayni sekilde build disi birakiliyor.
+          if [ -d "drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl" ]; then
+            echo "  -> eas_ctrl derleme agacindan cikariliyor (MTK EAS scheduler yamasi eksik)..."
+            if [ -f "drivers/misc/mediatek/performance/boost_ctrl/Makefile" ]; then
+              sed -i 's/.*eas_ctrl.*/# &  (disabled for 4.14.336 port)/' drivers/misc/mediatek/performance/boost_ctrl/Makefile
+            fi
+            echo "# eas_ctrl disabled for 4.14.336 port - requires MTK EAS scheduler core patches" > drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl/Makefile
+            echo "obj-y :=" >> drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl/Makefile
+          fi
+          
           # Derlemeyi baslat ve log dosyasina kaydet
           make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" 2>&1 | tee build.log
           
