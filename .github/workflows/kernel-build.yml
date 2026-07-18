@@ -532,16 +532,12 @@ jobs:
                       continue
                   if "linux/gfp.h" in content or "linux/slab.h" in content:
                       continue
+                  # Dosyanin EN BASINA ekle (son include satirindan sonraya eklemek,
+                  # o satir bir #ifdef bloguna denk gelirse etkisiz kalabiliyor;
+                  # dosya basi her zaman derlenir).
                   lines = content.splitlines(keepends=True)
-                  last_include_idx = None
-                  for i, line in enumerate(lines):
-                      if include_re.match(line):
-                          last_include_idx = i
                   insert_line = "#include <linux/gfp.h>\n"
-                  if last_include_idx is not None:
-                      lines.insert(last_include_idx + 1, insert_line)
-                  else:
-                      lines.insert(0, insert_line)
+                  lines.insert(0, insert_line)
                   with open(fpath, "w") as f:
                       f.writelines(lines)
                   patched += 1
