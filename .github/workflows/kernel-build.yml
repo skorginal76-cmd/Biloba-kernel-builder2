@@ -307,7 +307,7 @@ jobs:
           
           # NOT: mtk_thermal_monitor.h (drivers/misc/mediatek/include/mt-plat/) biloba
           # kaynagindan zaten geliyor ve ayni enum/fonksiyonlari tanimliyor. Bu yuzden
-          # mach/mtk_thermal.h dummy'sini SADECE o dosya yoksa yaziyoruz.
+          # mach/mtk_thermal.h dummy dosyasini SADECE gercek header yoksa yaziyoruz.
           write_file("include/mach/mtk_thermal.h", """\
               /* Professional MTK Thermal API Wrapper */
               #ifndef _MACH_MTK_THERMAL_H
