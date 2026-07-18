@@ -877,7 +877,7 @@ jobs:
 
           ui_print() {
             echo -e "ui_print $1
-ui_print" > $OUTFD;
+          ui_print" > $OUTFD;
           }
 
           ui_print " "
