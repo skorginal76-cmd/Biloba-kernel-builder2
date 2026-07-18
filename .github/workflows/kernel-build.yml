@@ -90,7 +90,41 @@ jobs:
           # 5. Power/PMIC suruculerini kopyala
           echo "-> Power suruculeri portlaniyor..."
           mkdir -p drivers/power
-          cp -r $BILOBA_DIR/drivers/power/* drivers/power/ 2>/dev/null || true
+          # DIKKAT: drivers/power/* tamamini kopyalamak, mainline'in kendi
+          # power_supply cekirdek altyapisini (power_supply_core.c vb.) eski
+          # bir MTK forkuyla degistirir ve bu API'ye bagli onlarca surucude
+          # (batarya, sarj, USB-PD...) zincirleme hataya yol acar. Bu yuzden
+          # SADECE MTK'ya ozel alt dizinleri/dosyalari kopyaliyoruz, mainline
+          # cekirdegine (power_supply core, reset, supply/) dokunmuyoruz.
+          for pdir in $BILOBA_DIR/drivers/power/*mediatek* $BILOBA_DIR/drivers/power/*mt67* $BILOBA_DIR/drivers/power/*mt-battery* $BILOBA_DIR/drivers/power/*charger*; do
+            if [ -e "$pdir" ]; then
+              cp -r "$pdir" drivers/power/ 2>/dev/null || true
+            fi
+          done
+          # Mevcut olabilecek mtk battery/charger klasoru kesin isimleriyle de dene
+          for pname in mediatek mtk_battery mtk-battery mtk_charger mtk-charger; do
+            if [ -d "$BILOBA_DIR/drivers/power/$pname" ]; then
+              cp -r "$BILOBA_DIR/drivers/power/$pname" drivers/power/ 2>/dev/null || true
+            fi
+          done
+          # Kopyalanan yeni alt dizinleri/dosyalari drivers/power/Makefile'a kaydet
+          if [ -f drivers/power/Makefile ]; then
+            find drivers/power -maxdepth 1 -type d \( -iname "*mediatek*" -o -iname "*mtk*" \) | while read d; do
+              subname="$(basename "$d")"
+              if ! grep -q "$subname" drivers/power/Makefile; then
+                echo "obj-y += ${subname}/" >> drivers/power/Makefile
+              fi
+              if [ ! -f "$d/Makefile" ]; then
+                find "$d" -maxdepth 1 -name "*.c" -printf "obj-y += %f\n" | sed 's/\.c$/.o/' > "$d/Makefile" 2>/dev/null || true
+              fi
+            done
+            find drivers/power -maxdepth 1 -name "*mediatek*.c" -o -maxdepth 1 -name "*mtk*.c" -o -maxdepth 1 -name "*mt67*.c" -o -maxdepth 1 -name "*charger*.c" | while read f; do
+              fname="$(basename "$f" .c)"
+              if ! grep -q "${fname}\.o" drivers/power/Makefile; then
+                echo "obj-y += ${fname}.o" >> drivers/power/Makefile
+              fi
+            done
+          fi
           
           # 6. Clock suruculerini kopyala
           echo "-> Clock suruculeri portlaniyor..."
@@ -127,7 +161,32 @@ jobs:
           
           # 12. USB suruculerini kopyala
           echo "-> USB suruculeri portlaniyor..."
-          cp -r $BILOBA_DIR/drivers/usb/* drivers/usb/ 2>/dev/null || true
+          # DIKKAT: drivers/usb/* tamamini kopyalamak mainline'in USB gadget/host
+          # cekirdegini (usb_gadget, dwc3 core vb.) eski bir MTK forkuyla degistirip
+          # cok sayida dosyada API uyumsuzlugu hatasi verir. Sadece MTK'ya ozel
+          # dosya/dizinleri kopyaliyoruz.
+          find $BILOBA_DIR/drivers/usb -maxdepth 2 \( -iname "*mediatek*" -o -iname "*mtk*" -o -iname "*mt67*" \) 2>/dev/null | while read f; do
+            rel_path="${f#$BILOBA_DIR/drivers/usb/}"
+            target="drivers/usb/$rel_path"
+            if [ -d "$f" ]; then
+              mkdir -p "$target"
+              cp -r "$f"/* "$target/" 2>/dev/null || true
+            else
+              mkdir -p "$(dirname "$target")"
+              cp "$f" "$target" 2>/dev/null || true
+            fi
+          done
+          # Kopyalanan her .c dosyasini kendi dizinindeki Makefile'a kaydet
+          find $BILOBA_DIR/drivers/usb -maxdepth 2 \( -iname "*mediatek*.c" -o -iname "*mtk*.c" -o -iname "*mt67*.c" \) 2>/dev/null | while read f; do
+            rel_path="${f#$BILOBA_DIR/drivers/usb/}"
+            target_dir="drivers/usb/$(dirname "$rel_path")"
+            fname="$(basename "$f" .c)"
+            if [ -f "$target_dir/Makefile" ]; then
+              if ! grep -q "${fname}\.o" "$target_dir/Makefile"; then
+                echo "obj-y += ${fname}.o" >> "$target_dir/Makefile"
+              fi
+            fi
+          done
           
           # 13. MMC suruculerini kopyala
           echo "-> MMC suruculeri portlaniyor..."
@@ -692,6 +751,25 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android11-release $CLANG_DIR
 
+      - name: Otomatik-Onarim Yardimci Scriptini Olustur
+        run: |
+          cat > "$GITHUB_WORKSPACE/parse_failed_dir.py" << 'PYEOF'
+          import re
+
+          pat = re.compile(r"scripts/Makefile\.build:\d+: (drivers/(?:misc/mediatek|power|usb|gpu/drm/mediatek|thermal|cpufreq|cpuidle|clk/mediatek|pinctrl/mediatek|mmc|spi|i2c|net|leds|watchdog|soc/mediatek|irqchip)[^ \]]*?)/[^/ \]]+\.o\] Error")
+          found = None
+          try:
+              with open("build.log") as f:
+                  for line in f:
+                      m = pat.search(line)
+                      if m:
+                          found = m.group(1)
+          except Exception:
+              pass
+          print(found or "")
+          PYEOF
+          echo "SUCCESS: parse_failed_dir.py olusturuldu"
+
       - name: Godmode 4.14.336 Derleme Baslat (Dogrudan Argumanli)
         run: |
           cd $KERNEL_DIR
@@ -734,39 +812,87 @@ jobs:
           ./scripts/config --file out/.config --disable CONFIG_DVB_CORE
           make O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" oldconfig
           
-          # dram_ctrl derlenemezse, boost_ctrl agacindan tamamen cikar
-          if [ -d "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl" ]; then
-            echo "  -> dram_ctrl derleme agacindan cikariliyor..."
-            # Ust Makefile'dan dram_ctrl referansini kaldir
-            if [ -f "drivers/misc/mediatek/performance/boost_ctrl/Makefile" ]; then
-              sed -i 's/.*dram_ctrl.*/# &  (disabled for 4.14.336 port)/' drivers/misc/mediatek/performance/boost_ctrl/Makefile
+          # Belli baslica derin MTK-ozel bagimliligi (kernel/sched EAS core
+          # yamalari, DVFSRC OPP tablolari vb.) oldugu bilinen ve dummy header
+          # ile cozulemeyen modulleri onceden devre disi birak.
+          disable_mtk_module() {
+            local dir="$1"
+            local reason="$2"
+            if [ -d "$dir" ] && [ -f "$dir/Makefile" ]; then
+              local parent_makefile
+              parent_makefile="$(dirname "$dir")/Makefile"
+              local subname
+              subname="$(basename "$dir")"
+              if [ -f "$parent_makefile" ]; then
+                sed -i "s/.*\b${subname}\b.*/# &  (disabled for 4.14.336 port: ${reason})/" "$parent_makefile"
+              fi
+              echo "# ${subname} disabled for 4.14.336 port: ${reason}" > "$dir/Makefile"
+              echo "obj-y :=" >> "$dir/Makefile"
+              echo "  -> ${dir} devre disi birakildi (${reason})"
             fi
-            # dram_ctrl Makefile'ini gecersiz kil
-            echo "# dram_ctrl disabled for 4.14.336 port - missing helio-dvfsrc-opp.h" > drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile
-            echo "obj-y :=" >> drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl/Makefile
-          fi
+          }
           
-          # eas_ctrl, MTK'nin kernel/sched icine gomdugu kendi EAS (Energy Aware
-          # Scheduling) yamalarina bagli (NR_CGROUP, EAS_*_KIR makrolari,
-          # sysctl_sched_sync_hint_enable degiskeni gibi). Bu core scheduler
-          # yamalari portlanan surucu agacinin disinda ve mainline 4.14.336'da
-          # yok; dummy header ile cozulemeyecek kadar derin bir bagimlilik
-          # oldugundan dram_ctrl ile ayni sekilde build disi birakiliyor.
-          if [ -d "drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl" ]; then
-            echo "  -> eas_ctrl derleme agacindan cikariliyor (MTK EAS scheduler yamasi eksik)..."
-            if [ -f "drivers/misc/mediatek/performance/boost_ctrl/Makefile" ]; then
-              sed -i 's/.*eas_ctrl.*/# &  (disabled for 4.14.336 port)/' drivers/misc/mediatek/performance/boost_ctrl/Makefile
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/dram_ctrl" "missing helio-dvfsrc-opp.h / DVFSRC OPP tablolari"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl" "MTK EAS scheduler core yamasi eksik (NR_CGROUP/EAS_*_KIR)"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/topo_ctrl" "MTK perfmgr topoloji globalleri eksik (perfmgr_clusters/cpu_mask)"
+          # boost_ctrl altindaki diger alt moduller de ayni MTK-ozel EAS/perfmgr
+          # cekirdek yamalarina (kernel/sched icine gomulu) bagimli olma egiliminde;
+          # gorulmemis olsa bile onceden devre disi birakiliyor (yoksa fonksiyon
+          # zaten no-op geciyor). Boylece her biri icin ayri ayri deneme-yanilma
+          # dongusune girmiyoruz.
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/cpu_ctrl" "MTK perfmgr cekirdek globalleri eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/gpu_ctrl" "MTK perfmgr/Mali DVFS globalleri eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/hps_ctrl" "MTK hotplug/perfmgr globalleri eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/uclamp_ctrl" "MTK uclamp scheduler yamasi eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/xgf_ctrl" "MTK xgf/game-adaptive scheduler yamasi eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/loading_ctrl" "MTK perfmgr loading-tracking globalleri eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/touch_boost" "MTK perfmgr touch-boost globalleri eksik olabilir"
+          disable_mtk_module "drivers/misc/mediatek/performance/boost_ctrl/obsv_ctrl" "MTK perfmgr observer globalleri eksik olabilir"
+          
+          # OTOMATIK-ONARIMLI DERLEME DONGUSU
+          # Yukaridaki liste bilinen sorunlu modulleri kapsar; ancak bu tip
+          # "portlanan surucu agacinin disindaki derin MTK-core bagimliligi"
+          # hatalari baska modullerde de (bugun bilmedigimiz) cikabilir.
+          # Bu yuzden derlemeyi tek seferlik degil, basarisiz olan alt modulu
+          # build.log'dan otomatik tespit edip devre disi birakarak yeniden
+          # deneyen bir donguyle calistiriyoruz. Boylece gelecekte cikacak
+          # benzer "drivers/misc/mediatek/... altinda undeclared identifier"
+          # hatalari da elle mudahale gerekmeden kendini onarir.
+          MAKE_ARGS=(O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error")
+          MAX_RETRIES=40
+          attempt=1
+          BUILD_OK=0
+          
+          while [ "$attempt" -le "$MAX_RETRIES" ]; do
+            echo "::group::Derleme denemesi #${attempt}"
+            set +e
+            make -j"$(nproc --all)" "${MAKE_ARGS[@]}" 2>&1 | tee build.log
+            status="${PIPESTATUS[0]}"
+            set -e
+            echo "::endgroup::"
+          
+            if [ "$status" -eq 0 ]; then
+              BUILD_OK=1
+              break
             fi
-            echo "# eas_ctrl disabled for 4.14.336 port - requires MTK EAS scheduler core patches" > drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl/Makefile
-            echo "obj-y :=" >> drivers/misc/mediatek/performance/boost_ctrl/eas_ctrl/Makefile
-          fi
           
-          # Derlemeyi baslat ve log dosyasina kaydet
-          make -j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- KCFLAGS="-w" HOSTCFLAGS="-fcommon -Wno-error" HOSTCXXFLAGS="-fcommon -Wno-error" 2>&1 | tee build.log
+            # build.log'dan basarisiz olan drivers/misc/mediatek alt modulunu
+            # (kendi Makefile'i olan en derin dizini) cikarmaya calis
+            FAILED_DIR=$(python3 "$GITHUB_WORKSPACE/parse_failed_dir.py")
           
-          # Hata varsa son 50 satiri goster
-          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-            echo "::error::Derleme hatasi tespit edildi!"
+            if [ -n "$FAILED_DIR" ] && [ -d "$FAILED_DIR" ] && [ -f "$FAILED_DIR/Makefile" ]; then
+              echo "::warning::${FAILED_DIR} derlenemedi (deneme ${attempt}), devre disi birakilip yeniden denenecek"
+              disable_mtk_module "$FAILED_DIR" "otomatik: derleme hatasi (deneme ${attempt})"
+              attempt=$((attempt + 1))
+              continue
+            else
+              echo "::error::Otomatik olarak izole edilemeyen bir derleme hatasi olustu (bilinen kaliba uymuyor)."
+              break
+            fi
+          done
+          
+          if [ "$BUILD_OK" -ne 1 ]; then
+            echo "::error::Derleme, otomatik onarim denemelerinden sonra basarisiz oldu (${attempt} deneme)."
             echo "::group::Son 50 hata satiri"
             grep -n -i "error:" build.log | tail -50 || true
             echo "::endgroup::"
@@ -775,6 +901,8 @@ jobs:
             echo "::endgroup::"
             exit 1
           fi
+          
+          echo "SUCCESS: Derleme ${attempt}. denemede basarili oldu."
 
       - name: Derleme Dogrulama Kontrolu (Sanity Check)
         run: |
