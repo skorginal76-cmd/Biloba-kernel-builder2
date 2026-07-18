@@ -256,6 +256,33 @@ jobs:
             fi
           done
           
+
+          # --- EKLENECEK KISIM: MTK 'mach' dizinlerini global include'a tasi ---
+          echo "-> mach klasorleri global include'a tasiniyor..."
+          
+          # 1. drivers/misc/mediatek altindaysa
+          if [ -d "$BILOBA_DIR/drivers/misc/mediatek/include/mach" ]; then
+            cp -r $BILOBA_DIR/drivers/misc/mediatek/include/mach include/ 2>/dev/null || true
+            echo "  + drivers/misc/mediatek/include/mach kopyalandi"
+          fi
+          
+          # 2. arch/arm64 altindaysa (MediaTek bazen buraya gomuyor)
+          if [ -d "$BILOBA_DIR/arch/arm64/include/mach" ]; then
+            # Orijinal yerine de koy
+            mkdir -p arch/arm64/include/mach
+            cp -r $BILOBA_DIR/arch/arm64/include/mach/* arch/arm64/include/mach/ 2>/dev/null || true
+            # Derleyici path hatasina karsi global include'a da kopyala
+            cp -r $BILOBA_DIR/arch/arm64/include/mach include/ 2>/dev/null || true
+            echo "  + arch/arm64/include/mach globale kopyalandi"
+          fi
+          
+          # 3. Direkt include altindaysa
+          if [ -d "$BILOBA_DIR/include/mach" ]; then
+            cp -r $BILOBA_DIR/include/mach include/ 2>/dev/null || true
+            echo "  + include/mach kopyalandi"
+          fi
+          # --- EKLENECEK KISIM SONU ---
+
           # 23. Arch dosyalarini kopyala (sadece biloba ozel)
           echo "-> Arch dosyalari portlaniyor..."
           if [ -d "$BILOBA_DIR/arch/arm64/kernel" ]; then
