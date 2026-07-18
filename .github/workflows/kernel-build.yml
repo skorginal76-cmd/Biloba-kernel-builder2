@@ -1,4 +1,4 @@
-Name: Godmode Biloba Kernel 4.14.336 Port & Build
+name: Godmode Biloba Kernel 4.14.336 Port & Build
 
 on:
   workflow_dispatch:
