@@ -26,7 +26,7 @@ on:
 
 jobs:
   port_and_build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04  # <--- Burayı ubuntu-latest'tan ubuntu-20.04'e çektik
 
     steps:
       - name: Free Disk Space
