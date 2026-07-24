@@ -1,648 +1,181 @@
-name: Upstream Merge & Build - biloba-r-oss 4.14.186 → 4.14.188
+name: Port and Build Biloba Kernel (Android 12 5.10)
 
 on:
   workflow_dispatch:
     inputs:
-      merge_strategy:
-        description: 'Merge strategy: cherry-pick or merge'
+      biloba_repo:
+        description: 'Biloba R-OSS Repo URL'
         required: true
-        default: 'cherry-pick'
-        type: choice
-        options:
-          - cherry-pick
-          - merge
-      build_target:
-        description: 'Build target defconfig'
+        default: 'https://github.com/MiCode/Official_Devices_R_kernel_source'
+      biloba_branch:
+        description: 'Biloba R-OSS Branch'
         required: true
-        default: 'ginkgo-perf_defconfig'
-        type: string
-      enable_mtk_fixes:
-        description: 'Apply MTK-specific compatibility fixes'
+        default: 'biloba-r-oss'
+      target_repo:
+        description: 'Target Kernel Repo URL'
         required: true
-        default: true
-        type: boolean
-      enable_build_test:
-        description: 'Run kernel build test after merge'
+        default: 'https://github.com/MillenniumOSS/android_kernel_common_android12-5.10'
+      target_branch:
+        description: 'Target Kernel Branch'
         required: true
-        default: true
-        type: boolean
-
-env:
-  KERNEL_REPO: "MiCode/Xiaomi_Kernel_OpenSource"
-  KERNEL_BRANCH: "biloba-r-oss"
-  UPSTREAM_REPO: "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git"
-  UPSTREAM_BRANCH: "linux-4.14.y"
-  TARGET_VERSION: "4.14.188"
-  BASE_VERSION: "4.14.186"
-  ARCH: arm64
-  CROSS_COMPILE: aarch64-linux-android-
-  CC: clang
-  CLANG_VERSION: r383902
-  TOOLCHAIN_URL: "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz"
+        default: 'main'
+      defconfig_name:
+        description: 'Defconfig File Name'
+        required: true
+        default: 'biloba_defconfig'
 
 jobs:
-  # ============================================================
-  # JOB 1: PREPARE & ANALYZE
-  # Kernel kaynaklarını hazırla, upstream farklarını analiz et
-  # ============================================================
-  prepare:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    outputs:
-      commits_to_merge: ${{ steps.analyze.outputs.commits }}
-      conflict_prediction: ${{ steps.analyze.outputs.conflicts }}
-      fix_patches_needed: ${{ steps.analyze.outputs.fixes }}
+  port_and_build:
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y             git git-email build-essential bc bison flex libssl-dev             libncurses5-dev python3 python3-pip wget tar gzip             ccache libelf-dev dwarves zstd
-          pip3 install --user pygit2
-
-      - name: Configure Git
-        run: |
-          git config --global user.email "upstream-bot@github.com"
-          git config --global user.name "Upstream Merge Bot"
-          git config --global core.editor "cat"
-          git config --global merge.conflictstyle diff3
-          git config --global rerere.enabled true
-
-      - name: Clone biloba-r-oss Repository
-        run: |
-          git clone --depth=1 --branch ${{ env.KERNEL_BRANCH }}             https://github.com/${{ env.KERNEL_REPO }}.git kernel
-          cd kernel
-          # Shallow clone'dan tam history'ye geçiş (upstream merge için gerekli)
-          git fetch --unshallow || true
-          echo "Current kernel version:"
-          grep -E "^VERSION|^PATCHLEVEL|^SUBLEVEL" Makefile | head -3
-
-      - name: Add Upstream Remote & Fetch Tags
-        working-directory: kernel
-        run: |
-          git remote add upstream ${{ env.UPSTREAM_REPO }}
-          git fetch upstream ${{ env.UPSTREAM_BRANCH }} --tags --depth=200
-          echo "Available upstream tags:"
-          git tag -l "v4.14.*" | sort -V | tail -10
-
-      - name: Analyze Upstream Delta (4.14.186 → 4.14.188)
-        id: analyze
-        working-directory: kernel
-        run: |
-          echo "=== COMMIT ANALYSIS ==="
-          # 4.14.186'dan 4.14.188'e olan commit'leri listele
-          COMMITS=$(git log --oneline --reverse v4.14.186..v4.14.188 2>/dev/null ||                     git log --oneline --reverse ${{ env.BASE_VERSION }}..${{ env.TARGET_VERSION }} 2>/dev/null ||                     echo "NEED_FULL_FETCH")
-
-          if [ "$COMMITS" = "NEED_FULL_FETCH" ]; then
-            echo "Full upstream fetch required..."
-            git fetch upstream ${{ env.UPSTREAM_BRANCH }} --tags --unshallow
-            COMMITS=$(git log --oneline --reverse v4.14.186..v4.14.188)
-          fi
-
-          echo "$COMMITS"
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          echo "=== CONFLICT PREDICTION ==="
-          # Yaygın conflict alan dosyaları tespit et
-          CONFLICT_FILES=$(git diff --name-only v4.14.186..v4.14.188 | grep -E             "Makefile|Kconfig|drivers/net|drivers/usb|drivers/gpu|drivers/media|            arch/arm64|kernel/sched|mm/slab|fs/btrfs|net/core|sound/usb" || true)
-          echo "High-risk files: $CONFLICT_FILES"
-          echo "conflicts=$CONFLICT_FILES" >> $GITHUB_OUTPUT
-
-          echo "=== FIX PATCHES NEEDED ==="
-          # biloba-r-oss için bilinen fix'leri kontrol et
-          FIXES=""
-          # MTK platformu için yaygın derleme hataları ve fix'leri
-          if [ -f "drivers/misc/mediatek/Makefile" ]; then
-            FIXES="${FIXES}MTK_BUILD_FIX;"
-          fi
-          # Android binder upstream compatibility
-          if [ -d "drivers/android" ]; then
-            FIXES="${FIXES}ANDROID_BINDER_FIX;"
-          fi
-          # GCC/Clang version compatibility
-          FIXES="${FIXES}TOOLCHAIN_COMPAT_FIX;"
-          echo "fixes=$FIXES" >> $GITHUB_OUTPUT
-
-      - name: Cache Toolchain
-        uses: actions/cache@v4
+      - name: Free Disk Space
+        uses: easimon/maximize-build-space@v10
         with:
-          path: ~/toolchain
-          key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}
+          root-reserve-mb: 10240
+          swap-size-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
 
-      - name: Download Android Toolchain
+      - name: Install System Build Dependencies
         run: |
-          mkdir -p ~/toolchain
-          if [ ! -f ~/toolchain/clang/bin/clang ]; then
-            wget -q ${{ env.TOOLCHAIN_URL }} -O /tmp/clang.tar.gz
-            tar -xzf /tmp/clang.tar.gz -C ~/toolchain/
-          fi
-          ~/toolchain/bin/clang --version || ~/toolchain/clang/bin/clang --version
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            bc bison flex build-essential libssl-dev libncurses5-dev \
+            git rsync wget tar unzip zip device-tree-compiler \
+            libelf-dev ccache lz4 liblz4-tool python3 python-is-python3
 
-  # ============================================================
-  # JOB 2: UPSTREAM MERGE WITH AUTO-FIX
-  # Cherry-pick/merge işlemi + otomatik conflict çözümü + fix'ler
-  # ============================================================
-  merge:
-    runs-on: ubuntu-22.04
-    needs: prepare
-    timeout-minutes: 60
-    outputs:
-      merge_status: ${{ steps.merge_result.outputs.status }}
-      applied_fixes: ${{ steps.apply_fixes.outputs.fixes }}
-    steps:
-      - name: Restore Cached Toolchain
-        uses: actions/cache@v4
-        with:
-          path: ~/toolchain
-          key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}
-
-      - name: Re-clone & Setup
+      - name: Clone Proton Clang Toolchain
         run: |
-          git clone --branch ${{ env.KERNEL_BRANCH }}             https://github.com/${{ env.KERNEL_REPO }}.git kernel
-          cd kernel
-          git fetch --unshallow || true
-          git remote add upstream ${{ env.UPSTREAM_REPO }}
-          git fetch upstream ${{ env.UPSTREAM_BRANCH }} --tags --unshallow
+          echo "==> Cloning Proton Clang toolchain..."
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang toolchain/clang
 
-      - name: Pre-Merge Safety Checks
-        working-directory: kernel
+      - name: Clone Biloba R-OSS Kernel Source
         run: |
-          echo "=== KERNEL VERSION BEFORE MERGE ==="
-          grep -E "^VERSION |^PATCHLEVEL |^SUBLEVEL " Makefile
+          echo "==> Cloning Biloba Source (${{ github.event.inputs.biloba_branch }})..."
+          git clone --depth=1 -b ${{ github.event.inputs.biloba_branch }} ${{ github.event.inputs.biloba_repo }} biloba-source
 
-          echo "=== BRANCH STATUS ==="
-          git status --short
-          git log --oneline -3
-
-          # Working tree temiz mi?
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Working tree is not clean!"
-            exit 1
-          fi
-
-      - name: Execute Merge Strategy
-        id: merge_exec
-        working-directory: kernel
+      - name: Clone Target Android 12 (5.10) Common Kernel
         run: |
-          STRATEGY="${{ github.event.inputs.merge_strategy }}"
+          echo "==> Cloning Target Kernel (${{ github.event.inputs.target_branch }})..."
+          git clone --depth=1 -b ${{ github.event.inputs.target_branch }} ${{ github.event.inputs.target_repo }} target-kernel
 
-          if [ "$STRATEGY" = "merge" ]; then
-            echo "=== MERGE STRATEGY: Direct Merge ==="
-            git merge --no-commit --no-ff v4.14.188 || {
-              echo "::warning::Merge conflicts detected, attempting auto-resolution..."
-
-              # Otomatik conflict çözüm stratejileri
-              # 1. Makefile versiyon conflict'lerini upstream lehine çöz
-              if [ -f "Makefile" ]; then
-                git checkout --theirs Makefile 2>/dev/null || true
-                git add Makefile 2>/dev/null || true
-              fi
-
-              # 2. Kconfig conflict'lerini çöz
-              find . -name "Kconfig*" -exec git checkout --theirs {} + 2>/dev/null || true
-              find . -name "Kconfig*" -exec git add {} + 2>/dev/null || true
-
-              # 3. Documentation conflict'lerini çöz
-              git checkout --theirs Documentation/ 2>/dev/null || true
-              git add Documentation/ 2>/dev/null || true
-
-              # Kalan conflict'leri raporla
-              CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
-              if [ -n "$CONFLICTS" ]; then
-                echo "::error::Unresolved conflicts in: $CONFLICTS"
-                echo "conflicts=$CONFLICTS" >> $GITHUB_OUTPUT
-                exit 1
-              fi
-            }
-          else
-            echo "=== MERGE STRATEGY: Cherry-Pick Range ==="
-            # 4.14.186'dan sonraki tüm commit'leri cherry-pick et
-            COMMITS=$(git rev-list --reverse v4.14.186..v4.14.188)
-            FAILED=0
-            FAILED_COMMIT=""
-
-            for COMMIT in $COMMITS; do
-              echo "Cherry-picking: $(git log --oneline -1 $COMMIT)"
-              if ! git cherry-pick --no-commit "$COMMIT" 2>/dev/null; then
-                echo "::warning::Cherry-pick failed for $COMMIT, attempting resolution..."
-
-                # Yaygın cherry-pick hatalarını otomatik çöz
-                # a) Makefile versiyon conflict
-                if git diff --name-only --diff-filter=U | grep -q "^Makefile$"; then
-                  git checkout --theirs Makefile
-                  git add Makefile
-                fi
-
-                # b) Kconfig merge conflict
-                for KCF in $(git diff --name-only --diff-filter=U | grep "Kconfig" || true); do
-                  if [ -f "$KCF" ]; then
-                    git checkout --theirs "$KCF" 2>/dev/null || true
-                    git add "$KCF" 2>/dev/null || true
-                  fi
-                done
-
-                # c) Include conflict'leri
-                for INC in $(git diff --name-only --diff-filter=U | grep "\.h$" || true); do
-                  if [ -f "$INC" ]; then
-                    # Header conflict'lerinde upstream'i tercih et
-                    git checkout --theirs "$INC" 2>/dev/null || true
-                    git add "$INC" 2>/dev/null || true
-                  fi
-                done
-
-                # Kalan conflict var mı?
-                REMAINING=$(git diff --name-only --diff-filter=U || true)
-                if [ -n "$REMAINING" ]; then
-                  echo "::error::Unresolved after auto-fix: $REMAINING"
-                  git diff --name-only --diff-filter=U
-                  FAILED=1
-                  FAILED_COMMIT="$COMMIT"
-                  break
-                else
-                  echo "Resolved automatically, continuing..."
-                  git commit -m "cherry-pick: $(git log --oneline -1 $COMMIT | cut -d' ' -f2-) [auto-resolved]"
-                fi
-              else
-                git commit -m "cherry-pick: $(git log --oneline -1 $COMMIT | cut -d' ' -f2-)"
-              fi
-            done
-
-            if [ $FAILED -eq 1 ]; then
-              echo "::error::Cherry-pick failed at $FAILED_COMMIT"
-              exit 1
-            fi
-          fi
-
-          echo "=== POST-MERGE VERSION ==="
-          grep -E "^VERSION |^PATCHLEVEL |^SUBLEVEL " Makefile
-
-      - name: Apply MTK & Android Compatibility Fixes
-        id: apply_fixes
-        if: github.event.inputs.enable_mtk_fixes == 'true'
-        working-directory: kernel
+      - name: Port Biloba Files into Target Kernel
         run: |
-          FIXES_APPLIED=""
+          SRC="$GITHUB_WORKSPACE/biloba-source"
+          TGT="$GITHUB_WORKSPACE/target-kernel"
 
-          echo "=== FIX 1: Makefile Version Bump ==="
-          # Makefile'daki versiyonu 4.14.188'e zorla
-          sed -i 's/^SUBLEVEL = 186/SUBLEVEL = 188/' Makefile 2>/dev/null || true
-          sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION =/' Makefile 2>/dev/null || true
-          FIXES_APPLIED="${FIXES_APPLIED}VERSION_BUMP;"
+          echo "==> Starting Porting Process..."
 
-          echo "=== FIX 2: Kconfig Compatibility ==="
-          # Android kernel'lerinde yaygın Kconfig sorunları
-          # CONFIG_LOCALVERSION_AUTO conflict fix
-          if grep -q "CONFIG_LOCALVERSION_AUTO" arch/arm64/configs/*.config 2>/dev/null; then
-            sed -i 's/CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/'               arch/arm64/configs/*.config 2>/dev/null || true
-            FIXES_APPLIED="${FIXES_APPLIED}LOCALVERSION_FIX;"
+          # 1. Defconfig & Vendor Configs
+          echo "[1/5] Copying Defconfigs..."
+          mkdir -p "$TGT/arch/arm64/configs"
+          find "$SRC/arch/arm64/configs/" -iname "*biloba*" -exec cp -v {} "$TGT/arch/arm64/configs/" \; 2>/dev/null || true
+          find "$SRC/arch/arm/configs/" -iname "*biloba*" -exec cp -v {} "$TGT/arch/arm/configs/" \; 2>/dev/null || true
+
+          # 2. Device Tree (DTS / DTSI)
+          echo "[2/5] Copying Device Trees..."
+          mkdir -p "$TGT/arch/arm64/boot/dts/mediatek"
+          find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/" \; 2>/dev/null || true
+
+          # 3. MediaTek & Vendor Drivers
+          echo "[3/5] Porting MediaTek & Touchscreen drivers..."
+          if [ -d "$SRC/drivers/misc/mediatek" ]; then
+            mkdir -p "$TGT/drivers/misc/mediatek"
+            rsync -av --update "$SRC/drivers/misc/mediatek/" "$TGT/drivers/misc/mediatek/"
           fi
 
-          echo "=== FIX 3: MTK Driver Build Fixes ==="
-          # MediaTek driver'larında yaygın derleme hataları
-          # 1. Missing include fix
-          if [ -d "drivers/misc/mediatek" ]; then
-            find drivers/misc/mediatek -name "*.c" -exec grep -l "linux/of.h" {} + 2>/dev/null |             while read f; do
-              if ! grep -q "#include <linux/of.h>" "$f" 2>/dev/null; then
-                sed -i '1i#include <linux/of.h>' "$f" 2>/dev/null || true
-              fi
-            done
-            FIXES_APPLIED="${FIXES_APPLIED}MTK_INCLUDES;"
+          if [ -d "$SRC/drivers/input/touchscreen" ]; then
+            rsync -av --update "$SRC/drivers/input/touchscreen/" "$TGT/drivers/input/touchscreen/"
           fi
 
-          # 2. sched_clock() declaration fix (4.14.187+ sched değişiklikleri)
-          if [ -f "kernel/sched/clock.c" ]; then
-            # MTK modüllerde sched_clock kullanımı
-            find drivers -name "*.c" -exec grep -l "sched_clock()" {} + 2>/dev/null |             while read f; do
-              if ! grep -q "#include <linux/sched/clock.h>" "$f" 2>/dev/null &&                  ! grep -q "extern.*sched_clock" "$f" 2>/dev/null; then
-                sed -i '/#include <linux\/sched.h>/a #include <linux/sched/clock.h>' "$f" 2>/dev/null || true
-              fi
-            done
-            FIXES_APPLIED="${FIXES_APPLIED}SCHED_CLOCK_FIX;"
+          # 4. Techpack & Subsystems
+          echo "[4/5] Porting Techpack & Vendor Modules..."
+          if [ -d "$SRC/techpack" ]; then
+            rsync -av --update "$SRC/techpack/" "$TGT/techpack/"
+          fi
+          if [ -d "$SRC/drivers/vendor" ]; then
+            rsync -av --update "$SRC/drivers/vendor/" "$TGT/drivers/vendor/"
           fi
 
-          echo "=== FIX 4: USB/Net Driver Compatibility ==="
-          # 4.14.187-188 USB ve Net değişiklikleri için MTK uyumluluk fix'leri
-          # xhci fix'leri için MTK platform compatibility
-          if [ -d "drivers/usb/host" ]; then
-            # xhci-mtk için runtime suspend fix (4.14.188'deki değişiklik)
-            if [ -f "drivers/usb/host/xhci-mtk.c" ]; then
-              if grep -q "runtime_suspend" drivers/usb/host/xhci-mtk.c 2>/dev/null; then
-                echo "::notice::xhci-mtk runtime suspend fix may be needed"
-                FIXES_APPLIED="${FIXES_APPLIED}XHCI_MTK_FIX;"
-              fi
-            fi
+          # 5. DT-Bindings & Headers
+          echo "[5/5] Merging Header Dependencies..."
+          if [ -d "$SRC/include/dt-bindings" ]; then
+            rsync -av --update "$SRC/include/dt-bindings/" "$TGT/include/dt-bindings/"
           fi
 
-          echo "=== FIX 5: SLUB/Slab Compatibility ==="
-          # 4.14.187'deki kzfree memzero_explicit değişikliği
-          if grep -q "kzfree" mm/slab.c 2>/dev/null; then
-            if ! grep -q "memzero_explicit" mm/slab.c 2>/dev/null; then
-              sed -i 's/memset(ptr, 0, ks);/memzero_explicit(ptr, ks);/' mm/slab.c 2>/dev/null || true
-              FIXES_APPLIED="${FIXES_APPLIED}SLUB_MEMZERO;"
-            fi
-          fi
-
-          echo "=== FIX 6: Tracing/Event Trigger Fix ==="
-          # 4.14.187'deki tracing fix
-          if [ -f "kernel/trace/trace_events_trigger.c" ]; then
-            if grep -q "skip_spaces" kernel/trace/trace_events_trigger.c 2>/dev/null; then
-              echo "::notice::Tracing event trigger fix already present"
-            else
-              # Fix'i uygula (boşluk karakteri parsing)
-              sed -i 's/while (\*str == ' ')/str = skip_spaces(str)/g'                 kernel/trace/trace_events_trigger.c 2>/dev/null || true
-              FIXES_APPLIED="${FIXES_APPLIED}TRACING_FIX;"
-            fi
-          fi
-
-          echo "=== FIX 7: Block Layer Compatibility ==="
-          # 4.14.187 blktrace concurrent call fix
-          if [ -f "kernel/trace/blktrace.c" ]; then
-            if grep -q "concurrent calls" kernel/trace/blktrace.c 2>/dev/null; then
-              echo "::notice::blktrace concurrent fix present"
-            fi
-            FIXES_APPLIED="${FIXES_APPLIED}BLKTRACE_CHECK;"
-          fi
-
-          echo "=== FIX 8: Network Stack Recursion Limit ==="
-          # 4.14.187 net/core recursion limit düzeltmesi
-          if [ -f "net/core/dev.c" ]; then
-            if grep -q "RECURSION_LIMIT.*8" net/core/dev.c 2>/dev/null; then
-              echo "::notice::Net recursion limit fix applied"
-            elif grep -q "RECURSION_LIMIT.*10" net/core/dev.c 2>/dev/null; then
-              sed -i 's/RECURSION_LIMIT.*10/RECURSION_LIMIT 8/' net/core/dev.c 2>/dev/null || true
-              FIXES_APPLIED="${FIXES_APPLIED}NET_RECURSION_FIX;"
-            fi
-          fi
-
-          echo "=== FIX 9: ALSA USB Audio OOB Fix ==="
-          # 4.14.188 ALSA USB audio revert + fix
-          if [ -d "sound/usb" ]; then
-            if [ -f "sound/usb/mixer.c" ]; then
-              # usb_mixer_elem_list is_std_info check
-              if ! grep -q "is_std_info" sound/usb/mixer.c 2>/dev/null; then
-                echo "::warning::ALSA USB mixer OOB fix may be needed"
-                FIXES_APPLIED="${FIXES_APPLIED}ALSA_MIXER_FIX;"
-              fi
-            fi
-          fi
-
-          echo "=== FIX 10: Btrfs Compatibility ==="
-          # 4.14.188 btrfs relocation/scrub fix'leri
-          if [ -d "fs/btrfs" ]; then
-            if [ -f "fs/btrfs/relocation.c" ]; then
-              echo "::notice::Btrfs relocation fix checked"
-              FIXES_APPLIED="${FIXES_APPLIED}BTRFS_CHECK;"
-            fi
-          fi
-
-          echo "fixes=$FIXES_APPLIED" >> $GITHUB_OUTPUT
-
-          # Değişiklikleri commit'le
-          if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit -m "auto-fix: Apply MTK/Android compatibility fixes for 4.14.188"
-          fi
-
-      - name: Verify Merge Integrity
-        id: merge_result
-        working-directory: kernel
-        run: |
-          echo "=== MERGE INTEGRITY CHECK ==="
-
-          # 1. Git tree temiz mi?
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Uncommitted changes remain!"
-            git status
-            exit 1
-          fi
-
-          # 2. Kernel versiyon doğru mu?
-          VERSION=$(grep -E "^SUBLEVEL" Makefile | awk '{print $3}')
-          if [ "$VERSION" != "188" ]; then
-            echo "::warning::Kernel sublevel is $VERSION, expected 188"
-          fi
-
-          # 3. Upstream commit'ler var mı?
-          UPSTREAM_COMMITS=$(git log --oneline --grep="upstream" --grep="Linux 4.14" --all-match | wc -l)
-          echo "Upstream-related commits: $UPSTREAM_COMMITS"
-
-          # 4. Merge commit sayısı
-          MERGE_COUNT=$(git rev-list --count HEAD ^origin/${{ env.KERNEL_BRANCH }})
-          echo "Commits added: $MERGE_COUNT"
-
-          echo "status=SUCCESS" >> $GITHUB_OUTPUT
-
-          # Artifact olarak kaydet
-          git bundle create ../biloba-r-oss-upstream.bundle --all
-
-      - name: Upload Merge Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: merged-kernel-source
-          path: biloba-r-oss-upstream.bundle
-          retention-days: 7
-
-  # ============================================================
-  # JOB 3: BUILD TEST
-  # Kernel derleme testi (opsiyonel)
-  # ============================================================
-  build:
-    runs-on: ubuntu-22.04
-    needs: merge
-    if: github.event.inputs.enable_build_test == 'true'
-    timeout-minutes: 120
-    steps:
-      - name: Restore Merged Source
-        uses: actions/download-artifact@v4
-        with:
-          name: merged-kernel-source
-
-      - name: Extract & Setup
-        run: |
-          git clone biloba-r-oss-upstream.bundle kernel
-          cd kernel
-          git checkout ${{ env.KERNEL_BRANCH }}
-
-      - name: Restore Toolchain Cache
-        uses: actions/cache@v4
-        with:
-          path: ~/toolchain
-          key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}
-
-      - name: Setup Build Environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y             build-essential bc bison flex libssl-dev libncurses5-dev             python3 ccache libelf-dev dwarves zstd
-
-          # Toolchain path
-          if [ -d "$HOME/toolchain/clang/bin" ]; then
-            echo "CLANG_PATH=$HOME/toolchain/clang/bin" >> $GITHUB_ENV
-          elif [ -d "$HOME/toolchain/bin" ]; then
-            echo "CLANG_PATH=$HOME/toolchain/bin" >> $GITHUB_ENV
-          fi
-
-      - name: Configure Kernel
-        working-directory: kernel
-        run: |
-          DEFCONFIG="${{ github.event.inputs.build_target }}"
-
-          # Defconfig var mı kontrol et
-          if [ ! -f "arch/arm64/configs/$DEFCONFIG" ]; then
-            echo "::warning::Defconfig $DEFCONFIG not found, searching alternatives..."
-            ls arch/arm64/configs/ | grep -E "ginkgo|biloba|mt6768|mediatek" || true
-            # Fallback defconfig
-            DEFCONFIG=$(ls arch/arm64/configs/ | grep -E "defconfig$" | head -1)
-            echo "Using fallback: $DEFCONFIG"
-          fi
-
-          make O=out ARCH=${{ env.ARCH }} $DEFCONFIG
-
-          # Android kernel config fix'leri
-          if [ -f "out/.config" ]; then
-            # CONFIG_LOCALVERSION'u ayarla
-            sed -i 's/CONFIG_LOCALVERSION=".*"/CONFIG_LOCALVERSION="-upstream-4.14.188"/' out/.config
-            # Ccache enable
-            echo "CONFIG_CCACHE=y" >> out/.config
-          fi
+          echo "==> Porting completed successfully."
 
       - name: Build Kernel
-        working-directory: kernel
         run: |
-          export PATH="${{ env.CLANG_PATH }}:$PATH"
-          export CROSS_COMPILE=${{ env.CROSS_COMPILE }}
-          export ARCH=${{ env.ARCH }}
+          cd target-kernel
+          
+          export PATH="$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
           export CC=clang
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          # Ccache
-          export CCACHE_COMPRESS=1
-          export CCACHE_MAXSIZE=5G
-
-          echo "=== BUILD START ==="
-          make -j$(nproc) O=out ARCH=${{ env.ARCH }}             CC="ccache clang"             CROSS_COMPILE="${{ env.CROSS_COMPILE }}"             2>&1 | tee build.log
-
-          BUILD_STATUS=${PIPESTATUS[0]}
-
-          if [ $BUILD_STATUS -ne 0 ]; then
-            echo "::error::Build failed!"
-            echo "=== LAST 50 LINES OF BUILD LOG ==="
-            tail -n 50 build.log
-
-            # Yaygın derleme hatalarını analiz et ve fix dene
-            echo "=== AUTO-FIX ATTEMPT ==="
-
-            # Error 1: implicit declaration
-            if grep -q "implicit declaration of function" build.log; then
-              MISSING=$(grep "implicit declaration of function" build.log |                         sed 's/.*function .\(.\)\.*/\1/' | sort -u)
-              echo "Missing declarations: $MISSING"
-              for FUNC in $MISSING; do
-                # Yaygın missing include'ları dene
-                case $FUNC in
-                  sched_clock)
-                    find . -name "*.c" -path "*/out/*" -prune -o -name "*.c" -print |                     xargs grep -l "$FUNC" 2>/dev/null | head -5 |                     while read f; do
-                      sed -i '1i#include <linux/sched/clock.h>' "$f" 2>/dev/null || true
-                    done
-                    ;;
-                  of_*)
-                    find . -name "*.c" -path "*/out/*" -prune -o -name "*.c" -print |                     xargs grep -l "$FUNC" 2>/dev/null | head -5 |                     while read f; do
-                      sed -i '1i#include <linux/of.h>' "$f" 2>/dev/null || true
-                    done
-                    ;;
-                esac
-              done
+          echo "==> Configuring defconfig: ${{ github.event.inputs.defconfig_name }}"
+          
+          DEFCONFIG="${{ github.event.inputs.defconfig_name }}"
+          if [ -f "arch/arm64/configs/$DEFCONFIG" ]; then
+            make O=out $DEFCONFIG | tee build.log
+          else
+            echo "Warning: $DEFCONFIG not found in exact path! Searching for alternative biloba defconfigs..."
+            FOUND_DEF=$(find arch/arm64/configs/ -iname "*biloba*" -type f -printf "%f\n" | head -n 1)
+            if [ -n "$FOUND_DEF" ]; then
+              echo "Using found defconfig: $FOUND_DEF"
+              make O=out $FOUND_DEF | tee build.log
+            else
+              echo "Using default defconfig..."
+              make O=out defconfig | tee build.log
             fi
-
-            # Error 2: incompatible pointer types
-            if grep -q "incompatible pointer types" build.log; then
-              echo "::warning::Pointer type incompatibility detected - manual fix may be needed"
-            fi
-
-            # Error 3: undefined reference
-            if grep -q "undefined reference to" build.log; then
-              echo "::warning::Linker error - undefined reference"
-            fi
-
-            exit 1
           fi
 
-          echo "=== BUILD SUCCESS ==="
-          ls -la out/arch/arm64/boot/Image* 2>/dev/null || true
-          ls -la out/arch/arm64/boot/dts/ 2>/dev/null || true
+          echo "==> Starting Kernel Compilation..."
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            2>&1 | tee -a build.log || true
 
-      - name: Build Modules
-        working-directory: kernel
+      - name: Package Kernel Output (Image & DTB)
         run: |
-          export PATH="${{ env.CLANG_PATH }}:$PATH"
-          export CROSS_COMPILE=${{ env.CROSS_COMPILE }}
-          export ARCH=${{ env.ARCH }}
-          export CC=clang
+          cd target-kernel
+          mkdir -p $GITHUB_WORKSPACE/build_output
 
-          make -j$(nproc) O=out ARCH=${{ env.ARCH }}             CC="ccache clang"             CROSS_COMPILE="${{ env.CROSS_COMPILE }}"             modules 2>&1 | tee modules.log
+          # Copy build log
+          cp build.log $GITHUB_WORKSPACE/build_output/ 2>/dev/null || true
 
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "::warning::Modules build had issues"
-            tail -n 30 modules.log
+          # Find and copy Image, Image.gz, dtb, dtbo
+          OUT_DIR="out/arch/arm64/boot"
+          
+          if [ -d "$OUT_DIR" ]; then
+            echo "==> Collecting compiled images and DTBs from $OUT_DIR..."
+            find $OUT_DIR -maxdepth 2 \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" -o -name "dtb" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \;
+          else
+            echo "==> Searching whole build directory for Image/DTB files..."
+            find out/ -type f \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \; || true
           fi
 
-      - name: Upload Build Artifacts
+          cd $GITHUB_WORKSPACE/build_output
+          echo "==> Creating Output Zip Archive..."
+          zip -r $GITHUB_WORKSPACE/biloba-kernel-artifacts.zip .
+
+      - name: Upload Build Log Artifact
+        uses: actions/upload-artifact@v4
         if: always()
+        with:
+          name: build-log
+          path: target-kernel/build.log
+
+      - name: Upload Kernel Image & DTB Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-build-output
-          path: |
-            kernel/out/arch/arm64/boot/Image*
-            kernel/build.log
-            kernel/modules.log
-          retention-days: 7
-          if-no-files-found: ignore
-
-  # ============================================================
-  # JOB 4: REPORT & VALIDATE
-  # Sonuç raporu ve doğrulama
-  # ============================================================
-  report:
-    runs-on: ubuntu-22.04
-    needs: [prepare, merge, build]
-    if: always()
-    steps:
-      - name: Generate Merge Report
-        run: |
-          echo "# Upstream Merge Report: biloba-r-oss 4.14.186 → 4.14.188" > report.md
-          echo "" >> report.md
-          echo "## Summary" >> report.md
-          echo "- **Merge Strategy**: ${{ github.event.inputs.merge_strategy }}" >> report.md
-          echo "- **Build Test**: ${{ github.event.inputs.enable_build_test }}" >> report.md
-          echo "- **MTK Fixes**: ${{ github.event.inputs.enable_mtk_fixes }}" >> report.md
-          echo "" >> report.md
-          echo "## Job Status" >> report.md
-          echo "| Job | Status |" >> report.md
-          echo "|-----|--------|" >> report.md
-          echo "| Prepare | ${{ needs.prepare.result }} |" >> report.md
-          echo "| Merge | ${{ needs.merge.result }} |" >> report.md
-          echo "| Build | ${{ needs.build.result }} |" >> report.md
-          echo "" >> report.md
-          echo "## Applied Fixes" >> report.md
-          echo "```" >> report.md
-          echo "${{ needs.merge.outputs.applied_fixes }}" >> report.md
-          echo "```" >> report.md
-          echo "" >> report.md
-          echo "## Notes" >> report.md
-          echo "- Upstream stable: ${{ env.UPSTREAM_REPO }}" >> report.md
-          echo "- Target version: ${{ env.TARGET_VERSION }}" >> report.md
-          echo "- Base version: ${{ env.BASE_VERSION }}" >> report.md
-          echo "" >> report.md
-          echo "## Next Steps" >> report.md
-          echo "1. Download merged source artifact" >> report.md
-          echo "2. Test on device: Redmi Note 8 (biloba)" >> report.md
-          echo "3. Verify boot and basic functionality" >> report.md
-          echo "4. Run CTS/VTS if available" >> report.md
-
-          cat report.md
-
-      - name: Upload Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: upstream-merge-report
-          path: report.md
-          retention-days: 30
+          name: biloba-kernel-artifacts
+          path: biloba-kernel-artifacts.zip
