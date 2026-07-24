@@ -87,6 +87,7 @@ jobs:
           fi
 
           if [ -d "$SRC/drivers/input/touchscreen" ]; then
+            mkdir -p "$TGT/drivers/input/touchscreen"
             rsync -av --update "$SRC/drivers/input/touchscreen/" "$TGT/drivers/input/touchscreen/"
           fi
 
@@ -134,6 +135,13 @@ jobs:
           fi
 
           echo "==> Porting & Linking completed successfully."
+
+      - name: Fix Kconfig Help Syntax
+        run: |
+          cd target-kernel
+          echo "==> Replacing '---help---' with 'help' in Kconfig files..."
+          find . -name "Kconfig*" -type f -exec sed -i 's/---help---/help/g' {} +
+          echo "==> Kconfig syntax fix completed."
 
       - name: Build Kernel
         run: |
