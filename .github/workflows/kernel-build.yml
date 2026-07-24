@@ -148,6 +148,17 @@ jobs:
           cd target-kernel
           echo "==> Replacing '---help---' with 'help' in Kconfig files..."
           find . -name "Kconfig*" -type f -exec sed -i 's/---help---/help/g' {} +
+          
+          echo "==> Fixing MediaTek un-indented help texts..."
+          # imgsensor Kconfig düzeltmeleri (Satır başlarındaki metinleri içeriden başlatıyoruz)
+          sed -i 's/^CONFIG_MTK_IMGSENSOR/\tCONFIG_MTK_IMGSENSOR/g' drivers/misc/mediatek/imgsensor/Kconfig || true
+          sed -i 's/^Specify/\tSpecify/g' drivers/misc/mediatek/imgsensor/src/Kconfig || true
+          sed -i 's/^For/\tFor/g' drivers/misc/mediatek/imgsensor/src/Kconfig || true
+          sed -i 's/^sensor/\tsensor/g' drivers/misc/mediatek/imgsensor/src/Kconfig || true
+          
+          # lens Kconfig düzeltmeleri
+          sed -i 's/^CONFIG_MTK_LENS/\tCONFIG_MTK_LENS/g' drivers/misc/mediatek/lens/Kconfig || true
+          
           echo "==> Kconfig syntax fix completed."
 
       - name: Build Kernel
