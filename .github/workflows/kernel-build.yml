@@ -26,7 +26,7 @@ on:
 
 jobs:
   port_and_build:
-    runs-on: ubuntu-20.04  # <--- Burayı ubuntu-latest'tan ubuntu-20.04'e çektik
+    runs-on: ubuntu-22.04  # <--- Hayalet 20.04 yerine aktif 22.04 kullanıyoruz
 
     steps:
       - name: Free Disk Space
