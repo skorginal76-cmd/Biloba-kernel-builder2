@@ -18,7 +18,7 @@ on:
       target_branch:
         description: 'Target Kernel Branch'
         required: true
-        default: 'main'
+        default: 'millennium-base'  # <--- Burayı 'main' yerine güncelledik
       defconfig_name:
         description: 'Defconfig File Name'
         required: true
