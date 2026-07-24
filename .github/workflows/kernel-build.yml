@@ -1,4 +1,4 @@
-name: Port and Build Biloba Kernel (Android 12 5.10)
+Name: Port and Build Biloba Kernel (Android 12 5.10)
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ on:
 
 jobs:
   port_and_build:
-    runs-on: ubuntu-22.04  # <--- Hayalet 20.04 yerine aktif 22.04 kullanıyoruz
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Free Disk Space
@@ -69,18 +69,18 @@ jobs:
           echo "==> Starting Porting Process..."
 
           # 1. Defconfig & Vendor Configs
-          echo "[1/5] Copying Defconfigs..."
+          echo "[1/6] Copying Defconfigs..."
           mkdir -p "$TGT/arch/arm64/configs"
           find "$SRC/arch/arm64/configs/" -iname "*biloba*" -exec cp -v {} "$TGT/arch/arm64/configs/" \; 2>/dev/null || true
           find "$SRC/arch/arm/configs/" -iname "*biloba*" -exec cp -v {} "$TGT/arch/arm/configs/" \; 2>/dev/null || true
 
           # 2. Device Tree (DTS / DTSI)
-          echo "[2/5] Copying Device Trees..."
+          echo "[2/6] Copying Device Trees..."
           mkdir -p "$TGT/arch/arm64/boot/dts/mediatek"
           find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/" \; 2>/dev/null || true
 
           # 3. MediaTek & Vendor Drivers
-          echo "[3/5] Porting MediaTek & Touchscreen drivers..."
+          echo "[3/6] Porting MediaTek & Touchscreen drivers..."
           if [ -d "$SRC/drivers/misc/mediatek" ]; then
             mkdir -p "$TGT/drivers/misc/mediatek"
             rsync -av --update "$SRC/drivers/misc/mediatek/" "$TGT/drivers/misc/mediatek/"
@@ -91,7 +91,7 @@ jobs:
           fi
 
           # 4. Techpack & Subsystems
-          echo "[4/5] Porting Techpack & Vendor Modules..."
+          echo "[4/6] Porting Techpack & Vendor Modules..."
           if [ -d "$SRC/techpack" ]; then
             rsync -av --update "$SRC/techpack/" "$TGT/techpack/"
           fi
@@ -100,12 +100,40 @@ jobs:
           fi
 
           # 5. DT-Bindings & Headers
-          echo "[5/5] Merging Header Dependencies..."
+          echo "[5/6] Merging Header Dependencies..."
           if [ -d "$SRC/include/dt-bindings" ]; then
             rsync -av --update "$SRC/include/dt-bindings/" "$TGT/include/dt-bindings/"
           fi
+          
+          # 6. KBUILD LINKAGE (YENİ EKLENEN KRİTİK ADIM)
+          # Bu adım, kopyalanan dosyaları ana derleme sürecine tanıtır.
+          echo "[6/6] Linking ported drivers and DTS into Kbuild Makefiles..."
+          
+          # MediaTek sürücülerini bağla
+          if [ -d "$TGT/drivers/misc/mediatek" ]; then
+            grep -q "mediatek" "$TGT/drivers/misc/Makefile" || echo 'obj-y += mediatek/' >> "$TGT/drivers/misc/Makefile"
+            grep -q "mediatek" "$TGT/drivers/misc/Kconfig" || sed -i '$a source "drivers/misc/mediatek/Kconfig"' "$TGT/drivers/misc/Kconfig" 2>/dev/null || true
+          fi
+          
+          # Vendor sürücülerini bağla
+          if [ -d "$TGT/drivers/vendor" ]; then
+            grep -q "vendor" "$TGT/drivers/Makefile" || echo 'obj-y += vendor/' >> "$TGT/drivers/Makefile"
+          fi
+          
+          # Techpack klasörünü bağla (Genellikle root dizininde yer alır)
+          if [ -d "$TGT/techpack" ]; then
+            grep -q "techpack" "$TGT/Makefile" || echo 'obj-y += techpack/' >> "$TGT/Makefile"
+          fi
+          
+          # Biloba DTS dosyalarını MediaTek Makefile'ına otomatik ekle (Böylece dtbs komutu bunları görür)
+          DTS_MAKEFILE="$TGT/arch/arm64/boot/dts/mediatek/Makefile"
+          if [ -f "$DTS_MAKEFILE" ]; then
+            find "$TGT/arch/arm64/boot/dts/" -name "*biloba*.dts" -exec basename {} \; | sed 's/\.dts/\.dtb/' | while read dtb_file; do
+              grep -q "$dtb_file" "$DTS_MAKEFILE" || echo "dtb-y += $dtb_file" >> "$DTS_MAKEFILE"
+            done
+          fi
 
-          echo "==> Porting completed successfully."
+          echo "==> Porting & Linking completed successfully."
 
       - name: Build Kernel
         run: |
@@ -148,11 +176,13 @@ jobs:
           fi
 
           echo "==> Starting Kernel Compilation..."
+          # BURASI GÜNCELLENDİ: Image.gz ve dtbs eklendi
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            Image.gz dtbs \
             2>&1 | tee -a build.log
 
       - name: Package Kernel Output (Image & DTB)
@@ -166,7 +196,7 @@ jobs:
           
           if [ -d "$OUT_DIR" ]; then
             echo "==> Collecting compiled images and DTBs from $OUT_DIR..."
-            find $OUT_DIR -maxdepth 2 \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" -o -name "dtb" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \;
+            find $OUT_DIR -maxdepth 3 \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" -o -name "dtb" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \;
           else
             echo "==> Searching whole build directory for Image/DTB files..."
             find out/ -type f \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \; || true
