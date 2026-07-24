@@ -128,15 +128,6 @@ jobs:
             grep -q "techpack" "$TGT/Makefile" || echo 'obj-y += techpack/' >> "$TGT/Makefile"
           fi
           
-          # Biloba DTS dosyalarını MediaTek Makefile'ına otomatik ekle (Böylece dtbs komutu bunları görür)
-          DTS_MAKEFILE="$TGT/arch/arm64/boot/dts/mediatek/Makefile"
-          if [ -f "$DTS_MAKEFILE" ]; then
-            find "$TGT/arch/arm64/boot/dts/" -name "*biloba*.dts" -exec basename {} \; | sed 's/\.dts/\.dtb/' | while read dtb_file; do
-              grep -q "$dtb_file" "$DTS_MAKEFILE" || echo "dtb-y += $dtb_file" >> "$DTS_MAKEFILE"
-            done
-          fi
-
-          echo "==> Porting & Linking completed successfully."
           # Biloba DTS dosyalarını MediaTek Makefile'ına otomatik ekle
           DTS_MAKEFILE="$TGT/arch/arm64/boot/dts/mediatek/Makefile"
           if [ -f "$DTS_MAKEFILE" ]; then
