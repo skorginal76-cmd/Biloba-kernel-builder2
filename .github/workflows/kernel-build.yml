@@ -6,7 +6,7 @@ on:
       biloba_repo:
         description: 'Biloba R-OSS Repo URL'
         required: true
-        default: 'https://github.com/MiCode/Official_Devices_R_kernel_source'
+        default: 'https://github.com/MiCode/Xiaomi_Kernel_OpenSource'
       biloba_branch:
         description: 'Biloba R-OSS Branch'
         required: true
