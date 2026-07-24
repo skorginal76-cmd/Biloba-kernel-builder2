@@ -30,13 +30,15 @@ jobs:
 
     steps:
       - name: Free Disk Space
-        uses: easimon/maximize-build-space@v10
+        uses: jlumbroso/free-disk-space@main
         with:
-          root-reserve-mb: 10240
-          swap-size-mb: 2048
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Install System Build Dependencies
         run: |
@@ -135,6 +137,20 @@ jobs:
           fi
 
           echo "==> Porting & Linking completed successfully."
+          # Biloba DTS dosyalarını MediaTek Makefile'ına otomatik ekle
+          DTS_MAKEFILE="$TGT/arch/arm64/boot/dts/mediatek/Makefile"
+          if [ -f "$DTS_MAKEFILE" ]; then
+            find "$TGT/arch/arm64/boot/dts/" -name "*biloba*.dts" -exec basename {} \; | sed 's/\.dts/\.dtb/' | while read dtb_file; do
+              grep -q "$dtb_file" "$DTS_MAKEFILE" || echo "dtb-y += $dtb_file" >> "$DTS_MAKEFILE"
+            done
+          fi
+
+          echo "==> Porting & Linking completed successfully."
+          
+          # DİSK ALANINI RAHATLATMAK İÇİN İŞİ BİTEN KAYNAĞI SİL
+          echo "==> Cleaning up biloba-source to free up disk space..."
+          rm -rf "$SRC"
+
 
       - name: Fix Kconfig Help Syntax
         run: |
