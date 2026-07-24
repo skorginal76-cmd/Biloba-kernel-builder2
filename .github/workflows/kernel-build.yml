@@ -121,13 +121,18 @@ jobs:
 
           echo "==> Searching for biloba defconfig inside arch/arm64/configs..."
           
-          # Defconfig dosyasını tara ve bulursan root configs dizinine hizala
+          # Defconfig dosyasını tara
           FOUND_DEF_PATH=$(find arch/arm64/configs/ -iname "*biloba*" -type f | head -n 1)
           
           if [ -n "$FOUND_DEF_PATH" ]; then
             DEFCONFIG_NAME=$(basename "$FOUND_DEF_PATH")
             echo "Found defconfig: $FOUND_DEF_PATH"
-            cp -f "$FOUND_DEF_PATH" arch/arm64/configs/
+            
+            # SADECE dosya farklı bir dizindeyse kopyala
+            if [ "$FOUND_DEF_PATH" != "arch/arm64/configs/$DEFCONFIG_NAME" ]; then
+              echo "Copying $DEFCONFIG_NAME to root configs directory..."
+              cp -f "$FOUND_DEF_PATH" "arch/arm64/configs/"
+            fi
           else
             echo "Target defconfig not found by search, fallback to input parameter..."
             DEFCONFIG_NAME="${{ github.event.inputs.defconfig_name }}"
