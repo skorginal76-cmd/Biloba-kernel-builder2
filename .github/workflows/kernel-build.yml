@@ -1,4 +1,4 @@
-Name: Port and Build Biloba Kernel (Android 12 5.10)
+name: Port and Build Biloba Kernel (Android 12 5.10)
 
 on:
   workflow_dispatch:
