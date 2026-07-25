@@ -146,23 +146,109 @@ jobs:
       - name: Fix Kconfig Help Syntax
         run: |
           cd target-kernel
-          echo "==> Replacing '---help---' with 'help' in Kconfig files..."
+          echo "==> Normalizing legacy '---help---' to 'help'..."
           find . -name "Kconfig*" -type f -exec sed -i 's/---help---/help/g' {} +
-          
-          echo "==> Fixing MediaTek un-indented help texts..."
-          # imgsensor Kconfig düzeltmeleri (Satır başlarındaki metinleri içeriden başlatıyoruz)
-          sed -i 's/^CONFIG_MTK_IMGSENSOR/\tCONFIG_MTK_IMGSENSOR/g' drivers/misc/mediatek/imgsensor/Kconfig || true
-          sed -i 's/^Specify/\tSpecify/g' drivers/misc/mediatek/imgsensor/src/Kconfig || true
-          sed -i 's/^For/\tFor/g' drivers/misc/mediatek/imgsensor/src/Kconfig || true
-          sed -i 's/^sensor/\tsensor/g' drivers/misc/mediatek/imgsensor/src/Kconfig || true
-          
-          # lens Kconfig düzeltmeleri
-          sed -i 's/^CONFIG_MTK_LENS/\tCONFIG_MTK_LENS/g' drivers/misc/mediatek/lens/Kconfig || true
-          
+
+          echo "==> Writing Kconfig auto-fixer..."
+          cat > "$GITHUB_WORKSPACE/fix_kconfig.py" << 'PYEOF'
+          #!/usr/bin/env python3
+          # Gercek hata kaynagi: "bool CONFIG_MTK_IMGSENSOR" gibi tirnaksiz
+          # prompt'lar (Xiaomi GPL dump'inda yaygin), help girintisi degil.
+          # Bu script iki seyi tree-wide, idempotent sekilde duzeltir:
+          #  1) bool/tristate/string/int/hex/prompt sonrasi tirnaksiz BUYUK_HARF
+          #     token  -> tirnak icine alinir: bool CONFIG_X -> bool "CONFIG_X"
+          #  2) help blogu icinde girintisiz kalmis satirlara tab eklenir.
+          import os, re, sys
+
+          TYPE_KEYWORDS = ("bool", "tristate", "string", "int", "hex", "prompt")
+          BARE_PROMPT_RE = re.compile(
+              r'^(\s*)(' + '|'.join(TYPE_KEYWORDS) + r')(\s+)([A-Z][A-Z0-9_]*)\s*$'
+          )
+          TOP_LEVEL_KEYWORDS = {
+              "config", "menuconfig", "menu", "endmenu", "choice", "endchoice",
+              "if", "endif", "source", "osource", "orsource", "rsource",
+              "comment", "mainmenu",
+          }
+
+          def fix_lines(lines):
+              changed = False
+              in_help = False
+              out = []
+              for line in lines:
+                  stripped = line.rstrip('\r\n')
+
+                  m = BARE_PROMPT_RE.match(stripped)
+                  if m and not in_help:
+                      indent, kw, sep, ident = m.groups()
+                      out.append(f'{indent}{kw} "{ident}"' + line[len(stripped):])
+                      changed = True
+                      continue
+
+                  bare = stripped.strip()
+                  if in_help:
+                      if bare == '':
+                          out.append(line)
+                          continue
+                      if stripped[:1] not in (' ', '\t'):
+                          if bare.startswith('#'):
+                              in_help = False
+                              out.append(line)
+                              continue
+                          first_word = bare.split()[0].rstrip(':') if bare.split() else ''
+                          if first_word in TOP_LEVEL_KEYWORDS:
+                              in_help = False
+                              out.append(line)
+                              continue
+                          else:
+                              out.append('\t' + line)
+                              changed = True
+                              continue
+                      out.append(line)
+                      continue
+                  else:
+                      if bare in ('help', '---help---'):
+                          in_help = True
+                      out.append(line)
+              return out, changed
+
+          def fix_file(path):
+              with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                  lines = f.readlines()
+              new_lines, changed = fix_lines(lines)
+              if changed:
+                  with open(path, 'w', encoding='utf-8') as f:
+                      f.writelines(new_lines)
+              return changed
+
+          def main():
+              root = sys.argv[1] if len(sys.argv) > 1 else '.'
+              fixed = []
+              for dirpath, _d, filenames in os.walk(root):
+                  for fn in filenames:
+                      if fn == 'Kconfig' or fn.startswith('Kconfig.'):
+                          p = os.path.join(dirpath, fn)
+                          try:
+                              if fix_file(p):
+                                  fixed.append(p)
+                          except Exception as e:
+                              print(f"skip {p}: {e}", file=sys.stderr)
+              print(f"Kconfig fixer: patched {len(fixed)} file(s)")
+              for p in fixed:
+                  print(" -", p)
+
+          if __name__ == '__main__':
+              main()
+
+          PYEOF
+
+          echo "==> Running Kconfig auto-fixer across target-kernel tree..."
+          python3 "$GITHUB_WORKSPACE/fix_kconfig.py" .
+
           echo "==> Kconfig syntax fix completed."
 
       - name: Build Kernel
         run: |
+          set -o pipefail
           cd target-kernel
           
           export PATH="$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH"
