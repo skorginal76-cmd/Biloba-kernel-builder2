@@ -79,7 +79,7 @@ jobs:
           # 2. Device Tree (DTS / DTSI)
           echo "[2/6] Copying Device Trees..."
           mkdir -p "$TGT/arch/arm64/boot/dts/mediatek"
-          find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/" \; 2>/dev/null || true
+          find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
 
           # 3. MediaTek & Vendor Drivers
           echo "[3/6] Porting MediaTek & Touchscreen drivers..."
