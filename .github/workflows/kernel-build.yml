@@ -95,14 +95,10 @@ jobs:
           # 1. Hamle: Eger SRC icinde herhangi bir yerde cust.dtsi varsa onu bul ve hedefe kopyala
           find "$SRC" -type f -name "cust.dtsi" -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
           
-          # 2. Hamle: Eger Xiaomi dosyayi repoya hic koymamissa, derlemenin cokmemesi icin sahte (bos) bir dosya olustur
-          if [ ! -f "$TGT/arch/arm64/boot/dts/mediatek/biloba/cust.dtsi" ]; then
-            echo "UYARI (Serhat KORKMAZ): cust.dtsi kaynak kodda bulunamadi! Derlemeyi kurtarmak icin bos bir dosya olusturuluyor..."
-            # Dosyayi olusturmadan once klasorun varligini garanti altina aliyoruz
-            mkdir -p "$TGT/arch/arm64/boot/dts/mediatek/biloba"
-            touch "$TGT/arch/arm64/boot/dts/mediatek/biloba/cust.dtsi"
-          fi
-
+          # Radikal Hamle: Hata veren include satirini kökünden sil!
+          echo "Serhat KORKMAZ: Sorun yaratan #include <biloba/cust.dtsi> satiri dts dosyasindan temizleniyor..."
+          find "$TGT/arch/arm64/boot/dts/mediatek/" -type f -name "*biloba*.dts" -exec sed -i '/#include <biloba\/cust\.dtsi>/d' {} \;
+          
           # 3. MediaTek & Vendor Drivers
           echo "[3/6] Porting MediaTek & Touchscreen drivers..."
           if [ -d "$SRC/drivers/misc/mediatek" ]; then
