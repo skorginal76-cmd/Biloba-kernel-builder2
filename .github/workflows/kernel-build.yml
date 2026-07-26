@@ -113,6 +113,34 @@ jobs:
             mkdir -p "$TGT/drivers/input/touchscreen"
             rsync -av --update "$SRC/drivers/input/touchscreen/" "$TGT/drivers/input/touchscreen/"
           fi
+          # Eski timer API (init_timer/.data/.function) -> yeni (timer_setup/from_timer).
+          # Ikisinde de kod birebir ayni oldugu icin ayni patch calisiyor.
+          python3 - "$TGT/drivers/misc/mediatek/pmic/common/upmu_lbat_service.c" "$TGT/drivers/misc/mediatek/pmic/common/upmu_lbat_service_v2.c" << 'PYEOF'
+          import sys
+
+          old_func = ("static void lbat_timer_func(unsigned long data)\n{\n"
+                      "\tunsigned int deb_prd = 0;\n\tunsigned int deb_times = 0;\n"
+                      "\tstruct lbat_user *user = (struct lbat_user *)data;")
+          new_func = ("static void lbat_timer_func(struct timer_list *t)\n{\n"
+                      "\tunsigned int deb_prd = 0;\n\tunsigned int deb_times = 0;\n"
+                      "\tstruct lbat_user *user = from_timer(user, t, deb_timer);")
+
+          old_init = ("\tinit_timer(&user->deb_timer);\n"
+                      "\tuser->deb_timer.data = (unsigned long)user;\n"
+                      "\tuser->deb_timer.expires = 0;\n"
+                      "\tuser->deb_timer.function = lbat_timer_func;")
+          new_init = ("\ttimer_setup(&user->deb_timer, lbat_timer_func, 0);\n"
+                      "\tuser->deb_timer.expires = 0;")
+
+          for path in sys.argv[1:]:
+              with open(path) as f:
+                  c = f.read()
+              if old_func in c:
+                  c = c.replace(old_func, new_func).replace(old_init, new_init)
+              with open(path, 'w') as f:
+                      f.write(c)
+              print("patched:", path)
+           PYEOF
 
           # 4. Techpack & Subsystems
           echo "[4/6] Porting Techpack & Vendor Modules..."
