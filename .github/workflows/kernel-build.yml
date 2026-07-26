@@ -129,6 +129,15 @@ jobs:
             rsync -av --update "$SRC/include/dt-bindings/" "$TGT/include/dt-bindings/"
           fi
           
+          # MTK/mediatek basliklari include/ altinda dagilmis durumda.
+          # Yolunda "mtk" veya "mediatek" gecen HER header'i ayni goreli yola kopyala.
+          # -n: target'ta zaten olan (mainline) bir header'in ustune yazma.
+          find "$SRC/include" -type f \( -ipath "*mtk*" -o -ipath "*mediatek*" \) | while read -r f; do
+          rel="${f#$SRC/}"
+          mkdir -p "$TGT/$(dirname "$rel")"
+          cp -vn "$f" "$TGT/$rel"
+          done
+          
           # 6. KBUILD LINKAGE (YENİ EKLENEN KRİTİK ADIM)
           # Bu adım, kopyalanan dosyaları ana derleme sürecine tanıtır.
           echo "[6/6] Linking ported drivers and DTS into Kbuild Makefiles..."
