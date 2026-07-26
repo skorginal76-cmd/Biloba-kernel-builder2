@@ -80,6 +80,8 @@ jobs:
           echo "[2/6] Copying Device Trees..."
           mkdir -p "$TGT/arch/arm64/boot/dts/mediatek"
           find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
+          # Kaynaktaki "biloba" klasörünün içindeki tüm dosyaları (cust.dtsi vb.) oluşturduğumuz alt klasöre kopyala
+          find "$SRC/arch/arm64/boot/dts/" -type d -name "biloba" -exec cp -r -v {}/* "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
 
           # 3. MediaTek & Vendor Drivers
           echo "[3/6] Porting MediaTek & Touchscreen drivers..."
