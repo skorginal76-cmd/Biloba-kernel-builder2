@@ -94,7 +94,10 @@ jobs:
 
           # 1. Hamle: Eger SRC icinde herhangi bir yerde cust.dtsi varsa onu bul ve hedefe kopyala
           find "$SRC" -type f -name "cust.dtsi" -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
-          
+         
+          # Nested "mediatek/" icin kendine referans symlink (cpp quoted include cozumu)
+          ln -sf . "$TGT/arch/arm64/boot/dts/mediatek/mediatek"
+
           # Radikal Hamle: Hata veren include satirini kökünden sil!
           echo "Serhat KORKMAZ: Sorun yaratan #include <biloba/cust.dtsi> satiri dts dosyasindan temizleniyor..."
           find "$TGT/arch/arm64/boot/dts/mediatek/" -type f -name "*biloba*.dts" -exec sed -i '/#include <biloba\/cust\.dtsi>/d' {} \;
