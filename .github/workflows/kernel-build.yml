@@ -138,6 +138,37 @@ jobs:
           cp -vn "$f" "$TGT/$rel"
           done
           
+          # upmu.c "struct mt6358_chip" istiyor; target'in kendi mainline core.h'i
+          # bunu icermiyor. Dosyayi degistirmek yerine (mt6358-irq.c/mt6397-core.c
+          # kirilir) eksik struct'i mevcut dosyaya MERGE ediyoruz.
+          CORE_H="$TGT/include/linux/mfd/mt6358/core.h"
+          if [ -f "$CORE_H" ] && ! grep -q "struct mt6358_chip" "$CORE_H"; then
+            python3 - "$CORE_H" << 'PYEOF'
+          import sys
+          path = sys.argv[1]
+          snippet = '''struct mt6358_chip {
+          \tstruct device *dev;
+          \tstruct regmap *regmap;
+          \tint irq;
+          \tstruct irq_domain *irq_domain;
+          \tstruct mutex irqlock;
+          \tunsigned int num_sps;
+          \tunsigned int num_pmic_irqs;
+          \tunsigned short top_int_status_reg;
+          };
+
+          extern unsigned int mt6358_irq_get_virq(struct device *dev, unsigned int hwirq);
+          extern const char *mt6358_irq_get_name(struct device *dev, unsigned int hwirq);
+
+          '''
+          with open(path) as f:
+             c = f.read()
+          c = c.replace('#endif /* __MFD_MT6358_CORE_H__ */', snippet + '#endif /* __MFD_MT6358_CORE_H__ */')
+          with open(path, 'w') as f:
+              f.write(c)
+          PYEOF
+          fi
+          
           # 6. KBUILD LINKAGE (YENİ EKLENEN KRİTİK ADIM)
           # Bu adım, kopyalanan dosyaları ana derleme sürecine tanıtır.
           echo "[6/6] Linking ported drivers and DTS into Kbuild Makefiles..."
