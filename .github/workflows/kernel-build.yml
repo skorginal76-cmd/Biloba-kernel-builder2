@@ -82,7 +82,25 @@ jobs:
           find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
           # Kaynaktaki "biloba" klasörünün içindeki tüm dosyaları (cust.dtsi vb.) oluşturduğumuz alt klasöre kopyala
           find "$SRC/arch/arm64/boot/dts/" -type d -name "biloba" -exec cp -r -v {}/* "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
+          # Author: Serhat KORKMAZ
+          # arch/arm64/boot/dts/mediatek/ içindeki TÜM dts ve dtsi dosyalarını kopyala
+          if [ -d "$SRC/arch/arm64/boot/dts/mediatek" ]; then
+            echo "Serhat KORKMAZ: MediaTek dizinindeki tum dts/dtsi dosyalari kopyalaniyor..."
+            find "$SRC/arch/arm64/boot/dts/mediatek/" -type f \( -name "*.dts" -o -name "*.dtsi" \) -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
+          fi
 
+          # Ust dizinde (arch/arm64/boot/dts/) kalmis olabilecek biloba dosyalarini da garantiye al
+          find "$SRC/arch/arm64/boot/dts/" -maxdepth 1 -iname "*biloba*" -type f -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
+
+          # 1. Hamle: Eger SRC icinde herhangi bir yerde cust.dtsi varsa onu bul ve hedefe kopyala
+          find "$SRC" -type f -name "cust.dtsi" -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
+          
+          # 2. Hamle: Eger Xiaomi dosyayi repoya hic koymamissa, derlemenin cokmemesi icin sahte (bos) bir dosya olustur
+          if [ ! -f "$TGT/arch/arm64/boot/dts/mediatek/biloba/cust.dtsi" ]; then
+            echo "UYARI (Serhat KORKMAZ): cust.dtsi kaynak kodda bulunamadi! Derlemeyi kurtarmak icin bos bir dosya olusturuluyor..."
+            touch "$TGT/arch/arm64/boot/dts/mediatek/biloba/cust.dtsi"
+          fi
+          
           # 3. MediaTek & Vendor Drivers
           echo "[3/6] Porting MediaTek & Touchscreen drivers..."
           if [ -d "$SRC/drivers/misc/mediatek" ]; then
