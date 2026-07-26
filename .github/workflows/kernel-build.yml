@@ -98,9 +98,11 @@ jobs:
           # 2. Hamle: Eger Xiaomi dosyayi repoya hic koymamissa, derlemenin cokmemesi icin sahte (bos) bir dosya olustur
           if [ ! -f "$TGT/arch/arm64/boot/dts/mediatek/biloba/cust.dtsi" ]; then
             echo "UYARI (Serhat KORKMAZ): cust.dtsi kaynak kodda bulunamadi! Derlemeyi kurtarmak icin bos bir dosya olusturuluyor..."
+            # Dosyayi olusturmadan once klasorun varligini garanti altina aliyoruz
+            mkdir -p "$TGT/arch/arm64/boot/dts/mediatek/biloba"
             touch "$TGT/arch/arm64/boot/dts/mediatek/biloba/cust.dtsi"
           fi
-          
+
           # 3. MediaTek & Vendor Drivers
           echo "[3/6] Porting MediaTek & Touchscreen drivers..."
           if [ -d "$SRC/drivers/misc/mediatek" ]; then
