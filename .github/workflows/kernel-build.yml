@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Build Environment
       run: |
@@ -60,18 +60,17 @@ jobs:
         #include <linux/platform_device.h>
         #include <linux/slab.h>
 
-        // Mali-G810 Teknik Mimari Özellikleri Struct Yapısı
         struct mali_g810_topology_specs {
-            char architecture[32];    // "ARM Valhall 5th Gen"
-            char model_name[32];      // "ARM Mali-G810 vGPU"
-            u32 core_count;           // 10 Shader Cores (MC10)
-            u32 execution_engines;    // 32 Execution Units
-            u32 max_clock_mhz;        // 950 MHz
-            u32 l2_cache_size_kb;     // 2048 KB (2MB)
-            u32 bus_width_bits;       // 256-bit
-            u32 vulkan_api_version;   // Vulkan 1.3 (0x00403000)
-            u32 opengl_es_version;    // OpenGL ES 3.2
-            u64 virt_vram_bytes;      // 2 GB Sanal VRAM
+            char architecture[32];    
+            char model_name[32];      
+            u32 core_count;           
+            u32 execution_engines;    
+            u32 max_clock_mhz;        
+            u32 l2_cache_size_kb;     
+            u32 bus_width_bits;       
+            u32 vulkan_api_version;   
+            u32 opengl_es_version;    
+            u64 virt_vram_bytes;      
         };
 
         static struct mali_g810_topology_specs g810_specs = {
@@ -164,14 +163,12 @@ jobs:
 
             pr_info("[VGPU-MAPPER] Ikinci Sanal GPU Kayit Ediliyor: %s\n", specs->model_name);
 
-            // 1. Sanal Platform Cihazını Oluştur
             vgpu_pdev = platform_device_register_simple("virt_mali_g810_device", -1, NULL, 0);
             if (IS_ERR(vgpu_pdev)) {
                 pr_err("[VGPU-MAPPER] Platform cihaz kaydi basarisiz!\n");
                 return PTR_ERR(vgpu_pdev);
             }
 
-            // 2. DRM Cihazı Tahsis Et (Cekirdek DRM Sisteminde /dev/dri/ Düğümü İçin)
             vgpu_drm_dev = drm_dev_alloc(&virt_mali_drm_driver, &vgpu_pdev->dev);
             if (IS_ERR(vgpu_drm_dev)) {
                 pr_err("[VGPU-MAPPER] DRM Cihaz tahsisi hatasi!\n");
@@ -179,7 +176,6 @@ jobs:
                 return PTR_ERR(vgpu_drm_dev);
             }
 
-            // 3. İkinci Donanım Olarak Sisteme /dev/dri/card1 ve renderD129 Olarak Kaydet
             ret = drm_dev_register(vgpu_drm_dev, 0);
             if (ret) {
                 pr_err("[VGPU-MAPPER] DRM Cihazi sisteme tescil edilemedi!\n");
@@ -188,9 +184,7 @@ jobs:
                 return ret;
             }
 
-            pr_info("[VGPU-MAPPER] BASARILI! İkinci Donanim Sanal GPU Olarak Eklendi: /dev/dri/renderD129\n");
-            pr_info("[VGPU-MAPPER] %d Cores @ %dMHz (%lld MB VRAM Allocation Capability)\n", 
-                    specs->core_count, specs->max_clock_mhz, specs->virt_vram_bytes / (1024*1024));
+            pr_info("[VGPU-MAPPER] BASARILI! Ikinci Donanim Sanal GPU Olarak Eklendi: /dev/dri/renderD129\n");
             
             return 0;
         }
@@ -203,7 +197,7 @@ jobs:
             if (vgpu_pdev) {
                 platform_device_unregister(vgpu_pdev);
             }
-            pr_info("[VGPU-MAPPER] İkinci Sanal GPU Kaldirildi.\n");
+            pr_info("[VGPU-MAPPER] Ikinci Sanal GPU Kaldirildi.\n");
         }
 
         module_init(virt_gpu_mapper_init);
@@ -213,7 +207,7 @@ jobs:
         MODULE_LICENSE("GPL");
         EOF
 
-        # 3. Makefile Entegrasyonu (Sıralı Derleme İle Bağımlılığı Çözme)
+        # 3. Makefile Entegrasyonu
         echo "obj-y += virtual_mali_g810.o" > drivers/gpu/drm/virtual_mali/Makefile
         echo "obj-y += virtual_gpu_mapper.o" >> drivers/gpu/drm/virtual_mali/Makefile
         
@@ -235,7 +229,7 @@ jobs:
         make O=out -j$(nproc --all)
 
     - name: Upload Kernel Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Biloba-Topological-MaliG810-Image
         path: kernel-source/out/arch/arm64/boot/Image.gz-dtb
