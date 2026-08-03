@@ -25,6 +25,19 @@ jobs:
       run: |
         git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
+    - name: Fix Inline Header Issues (ksm_flock & blk_crypto_flock)
+      working-directory: kernel-source
+      run: |
+        echo "--- Inline Fonksiyon Başlık Hataları Düzeltiliyor ---"
+        if [ -f "include/linux/keyslot-manager.h" ]; then
+          sed -i 's/^inline void ksm_flock/static inline void ksm_flock/g' include/linux/keyslot-manager.h
+          sed -i 's/extern inline/static inline/g' include/linux/keyslot-manager.h
+        fi
+        if [ -f "include/linux/blk-crypto.h" ]; then
+          sed -i 's/^inline void blk_crypto_flock/static inline void blk_crypto_flock/g' include/linux/blk-crypto.h
+          sed -i 's/extern inline/static inline/g' include/linux/blk-crypto.h
+        fi
+
     - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
       run: |
@@ -223,7 +236,8 @@ jobs:
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        export KCFLAGS="-Wno-error"
+        export KCFLAGS="-Wno-error -fgnu89-inline"
+        export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
         
         make O=out biloba_defconfig 2>&1 | tee -a build.log
         make O=out Image dtbs -j$(nproc --all) 2>&1 | tee -a build.log
