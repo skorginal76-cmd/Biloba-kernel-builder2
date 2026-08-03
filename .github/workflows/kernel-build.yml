@@ -1,4 +1,4 @@
-name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
+Name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
 
 on:
   workflow_dispatch:
@@ -236,10 +236,20 @@ jobs:
     - name: Build Kernel (Image & DTBs)
       working-directory: kernel-source
       run: |
+        set -o pipefail
+        
         export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
+        
         export CC=clang
+        export LD=ld.lld
+        export AR=llvm-ar
+        export NM=llvm-nm
+        export OBJCOPY=llvm-objcopy
+        export OBJDUMP=llvm-objdump
+        export STRIP=llvm-strip
+        
         export HOSTCC=gcc
         export HOSTCXX=g++
         export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -248,8 +258,8 @@ jobs:
         export KCFLAGS="-Wno-error -fgnu89-inline"
         export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
         
-        make O=out biloba_defconfig 2>&1 | tee -a build.log
-        make O=out Image dtbs -j$(nproc --all) 2>&1 | tee -a build.log
+        make O=out biloba_defconfig 2>&1 | tee build.log
+        make O=out Image Image.gz dtbs -j$(nproc --all) 2>&1 | tee -a build.log
 
     - name: Upload Build Log Artifact
       if: always()
