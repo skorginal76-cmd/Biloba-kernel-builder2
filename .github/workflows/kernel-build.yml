@@ -52,13 +52,14 @@ jobs:
       working-directory: kernel-source
       run: |
         echo "--- Topological Virtual Mali-G810 C Dosyalari Olusturuluyor ---"
-        mkdir -p drivers/gpu/drm/virtual_mali/
+        mkdir -p drivers/misc/virtual_mali/
 
-        # 1. Mali-G810 Teknik Özelliklerini ve Topolojisini Tanımlayan .c Dosyası
-        cat << 'EOF' > drivers/gpu/drm/virtual_mali/virtual_mali_g810.c
-        #include <linux/module.h>
-        #include <linux/platform_device.h>
-        #include <linux/slab.h>
+        # 1. Ortak Header Dosyası
+        cat << 'EOF' > drivers/misc/virtual_mali/virtual_mali.h
+        #ifndef __VIRTUAL_MALI_H
+        #define __VIRTUAL_MALI_H
+
+        #include <linux/types.h>
 
         struct mali_g810_topology_specs {
             char architecture[32];    
@@ -72,6 +73,18 @@ jobs:
             u32 opengl_es_version;    
             u64 virt_vram_bytes;      
         };
+
+        struct mali_g810_topology_specs* get_mali_g810_specs(void);
+
+        #endif
+        EOF
+
+        # 2. Mali-G810 Topoloji ve Donanım Sürücüsü
+        cat << 'EOF' > drivers/misc/virtual_mali/virtual_mali_g810.c
+        #include <linux/module.h>
+        #include <linux/platform_device.h>
+        #include <linux/slab.h>
+        #include "virtual_mali.h"
 
         static struct mali_g810_topology_specs g810_specs = {
             .architecture = "ARM Valhall Architecture",
@@ -114,47 +127,35 @@ jobs:
         MODULE_LICENSE("GPL");
         EOF
 
-        # 2. Donanım Teknik Özelliklerini DRM Sistemine İkinci GPU Olarak Tescil Eden Mapper .c Dosyası
-        cat << 'EOF' > drivers/gpu/drm/virtual_mali/virtual_gpu_mapper.c
+        # 3. Virtual GPU Mapper Sürücüsü (Misc Device Interface)
+        cat << 'EOF' > drivers/misc/virtual_mali/virtual_gpu_mapper.c
         #include <linux/module.h>
-        #include <drm/drmP.h>
-        #include <drm/drm_drv.h>
-        #include <drm/drm_gem.h>
+        #include <linux/platform_device.h>
+        #include <linux/miscdevice.h>
+        #include <linux/fs.h>
+        #include <linux/slab.h>
+        #include "virtual_mali.h"
 
-        struct mali_g810_topology_specs {
-            char architecture[32];
-            char model_name[32];
-            u32 core_count;
-            u32 execution_engines;
-            u32 max_clock_mhz;
-            u32 l2_cache_size_kb;
-            u32 bus_width_bits;
-            u32 vulkan_api_version;
-            u32 opengl_es_version;
-            u64 virt_vram_bytes;
-        };
+        static int virt_gpu_open(struct inode *inode, struct file *file) {
+            return 0;
+        }
 
-        extern struct mali_g810_topology_specs* get_mali_g810_specs(void);
+        static int virt_gpu_release(struct inode *inode, struct file *file) {
+            return 0;
+        }
 
         static const struct file_operations virt_gpu_fops = {
             .owner = THIS_MODULE,
-            .open = drm_open,
-            .release = drm_release,
-            .unlocked_ioctl = drm_ioctl,
-            .mmap = drm_gem_mmap,
+            .open = virt_gpu_open,
+            .release = virt_gpu_release,
         };
 
-        static struct drm_driver virt_mali_drm_driver = {
-            .driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_ATOMIC,
-            .fops = &virt_gpu_fops,
+        static struct miscdevice virt_mali_misc_dev = {
+            .minor = MISC_DYNAMIC_MINOR,
             .name = "mali_g810_vgpu",
-            .desc = "ARM Mali-G810 Virtual Second Graphics Adapter",
-            .date = "20260803",
-            .major = 1,
-            .minor = 0,
+            .fops = &virt_gpu_fops,
         };
 
-        static struct drm_device *vgpu_drm_dev;
         static struct platform_device *vgpu_pdev;
 
         static int __init virt_gpu_mapper_init(void) {
@@ -169,31 +170,19 @@ jobs:
                 return PTR_ERR(vgpu_pdev);
             }
 
-            vgpu_drm_dev = drm_dev_alloc(&virt_mali_drm_driver, &vgpu_pdev->dev);
-            if (IS_ERR(vgpu_drm_dev)) {
-                pr_err("[VGPU-MAPPER] DRM Cihaz tahsisi hatasi!\n");
-                platform_device_unregister(vgpu_pdev);
-                return PTR_ERR(vgpu_drm_dev);
-            }
-
-            ret = drm_dev_register(vgpu_drm_dev, 0);
+            ret = misc_register(&virt_mali_misc_dev);
             if (ret) {
-                pr_err("[VGPU-MAPPER] DRM Cihazi sisteme tescil edilemedi!\n");
-                drm_dev_put(vgpu_drm_dev);
+                pr_err("[VGPU-MAPPER] Misc cihaz tescil edilemedi!\n");
                 platform_device_unregister(vgpu_pdev);
                 return ret;
             }
 
-            pr_info("[VGPU-MAPPER] BASARILI! Ikinci Donanim Sanal GPU Olarak Eklendi: /dev/dri/renderD129\n");
-            
+            pr_info("[VGPU-MAPPER] BASARILI! Ikinci Donanim Sanal GPU Olarak Eklendi: /dev/mali_g810_vgpu\n");
             return 0;
         }
 
         static void __exit virt_gpu_mapper_exit(void) {
-            if (vgpu_drm_dev) {
-                drm_dev_unregister(vgpu_drm_dev);
-                drm_dev_put(vgpu_drm_dev);
-            }
+            misc_deregister(&virt_mali_misc_dev);
             if (vgpu_pdev) {
                 platform_device_unregister(vgpu_pdev);
             }
@@ -203,17 +192,15 @@ jobs:
         module_init(virt_gpu_mapper_init);
         module_exit(virt_gpu_mapper_exit);
         MODULE_AUTHOR("Serhat");
-        MODULE_DESCRIPTION("Topological Virtual GPU Mapper for Second GPU Registration");
+        MODULE_DESCRIPTION("Topological Virtual GPU Mapper");
         MODULE_LICENSE("GPL");
         EOF
 
-        # 3. Makefile Entegrasyonu
-        echo "obj-y += virtual_mali_g810.o" > drivers/gpu/drm/virtual_mali/Makefile
-        echo "obj-y += virtual_gpu_mapper.o" >> drivers/gpu/drm/virtual_mali/Makefile
+        # 4. Makefile Bağlantısı
+        echo "obj-y += virtual_mali_g810.o" > drivers/misc/virtual_mali/Makefile
+        echo "obj-y += virtual_gpu_mapper.o" >> drivers/misc/virtual_mali/Makefile
         
-        echo "ccflags-y := -Idrivers/gpu/drm" >> drivers/gpu/drm/virtual_mali/Makefile
-        
-        sed -i '$a obj-y += virtual_mali/' drivers/gpu/drm/Makefile
+        echo "obj-y += virtual_mali/" >> drivers/misc/Makefile
 
     - name: Build Kernel (Image & DTBs)
       working-directory: kernel-source
