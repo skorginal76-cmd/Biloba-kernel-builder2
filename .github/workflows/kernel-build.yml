@@ -26,32 +26,26 @@ jobs:
         git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
     - name: Apply Hotfixes for Compiler Errors
+      working-directory: kernel-source
       run: |
           echo "=== 1. Crypto / Keyslot Manager Inline Fixes ==="
-          # Header dosyalarındaki eksik inline tanımlamaları temizleme / düzeltme
-          if [ -f include/linux/keyslot-manager.h ]; then
-            sed -i 's/static inline void ksm_flock.*/static inline void ksm_flock(struct keyslot_manager *ksm, unsigned int flags) {}/g' include/linux/keyslot-manager.h || true
-            sed -i 's/always_inline//g' include/linux/keyslot-manager.h || true
-          fi
-
-          if [ -f include/linux/blk-crypto.h ]; then
-            sed -i 's/static inline void blk_crypto_flock.*/static inline void blk_crypto_flock(struct keyslot_manager *ksm, unsigned int flags) {}/g' include/linux/blk-crypto.h || true
-            sed -i 's/always_inline//g' include/linux/blk-crypto.h || true
-          fi
+          sed -i 's/inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
+          sed -i 's/__always_inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
+          
+          sed -i 's/inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
+          sed -i 's/__always_inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
 
           echo "=== 2. Touchscreen Missing Firmware & Upgrade Bypass ==="
-          # Eksik fw_huaxing_v0c.i dosyası için dummy dosya oluşturma
+          # FTS_UPGRADE_FW_FILE tanımını devre dışı bırakma
+          sed -i 's/#define FTS_UPGRADE_FW_FILE/\/\/#define FTS_UPGRADE_FW_FILE/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
+          sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
+
+          # Eksik fw_huaxing_v0c.i dosyası için dummy (sanal) dosya oluşturma
           DRV_FW_DIR="drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware"
           mkdir -p "$DRV_FW_DIR"
           mkdir -p include/firmware
           touch "$DRV_FW_DIR/fw_huaxing_v0c.i"
           touch include/firmware/fw_huaxing_v0c.i
-
-          # FocalTech sürücüsündeki yazılım yükleme zorunluluğunu devreden çıkarma
-          FT_CONFIG="drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h"
-          if [ -f "$FT_CONFIG" ]; then
-            sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' "$FT_CONFIG" || true
-          fi
 
     - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
