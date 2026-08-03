@@ -1,421 +1,241 @@
-name: Port and Build Biloba Kernel (Android 12 5.10)
+name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
 
 on:
   workflow_dispatch:
-    inputs:
-      biloba_repo:
-        description: 'Biloba R-OSS Repo URL'
-        required: true
-        default: 'https://github.com/MiCode/Xiaomi_Kernel_OpenSource'
-      biloba_branch:
-        description: 'Biloba R-OSS Branch'
-        required: true
-        default: 'biloba-r-oss'
-      target_repo:
-        description: 'Target Kernel Repo URL'
-        required: true
-        default: 'https://github.com/MillenniumOSS/android_kernel_common_android12-5.10'
-      target_branch:
-        description: 'Target Kernel Branch'
-        required: true
-        default: 'millennium-base'
-      defconfig_name:
-        description: 'Defconfig File Name'
-        required: true
-        default: 'biloba_defconfig'
 
 jobs:
-  port_and_build:
-    runs-on: ubuntu-22.04
+  build:
+    name: Build Kernel with Topological Virtual GPU
+    runs-on: ubuntu-20.04
 
     steps:
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-      - name: Install System Build Dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            bc bison flex build-essential libssl-dev libncurses5-dev \
-            git rsync wget tar unzip zip device-tree-compiler \
-            libelf-dev ccache lz4 liblz4-tool python3 python-is-python3
+    - name: Set up Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev gcc-multilib g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip
 
-      - name: Clone Proton Clang Toolchain
-        run: |
-          echo "==> Cloning Proton Clang toolchain..."
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang toolchain/clang
+    - name: Clone Toolchain (Proton-Clang)
+      run: |
+        git clone --depth=1 https://github.com/kdrag0n/proton-clang toolchain
 
-      - name: Clone Biloba R-OSS Kernel Source
-        run: |
-          echo "==> Cloning Biloba Source (${{ github.event.inputs.biloba_branch }})..."
-          git clone --depth=1 -b ${{ github.event.inputs.biloba_branch }} ${{ github.event.inputs.biloba_repo }} biloba-source
+    - name: Clone Kernel Source (biloba-r-oss)
+      run: |
+        git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
-      - name: Clone Target Android 12 (5.10) Common Kernel
-        run: |
-          echo "==> Cloning Target Kernel (${{ github.event.inputs.target_branch }})..."
-          git clone --depth=1 -b ${{ github.event.inputs.target_branch }} ${{ github.event.inputs.target_repo }} target-kernel
+    - name: Inject 2 Dummy Files & 8GB ZRAM Patch
+      working-directory: kernel-source
+      run: |
+        echo "--- Dummy Header Dosyalari Olusturuluyor ---"
+        mkdir -p drivers/misc/mediatek/include/
+        
+        echo "#ifndef __MTK_THERMAL_DUMMY_H" > drivers/misc/mediatek/include/mtk_thermal.h
+        echo "#define __MTK_THERMAL_DUMMY_H" >> drivers/misc/mediatek/include/mtk_thermal.h
+        echo "#endif" >> drivers/misc/mediatek/include/mtk_thermal.h
+        
+        echo "#ifndef __MTK_CMDQ_DUMMY_H" > drivers/misc/mediatek/include/mtk-cmdq.h
+        echo "#define __MTK_CMDQ_DUMMY_H" >> drivers/misc/mediatek/include/mtk-cmdq.h
+        echo "#endif" >> drivers/misc/mediatek/include/mtk-cmdq.h
 
-      - name: Port Biloba Files into Target Kernel
-        run: |
-          SRC="$GITHUB_WORKSPACE/biloba-source"
-          TGT="$GITHUB_WORKSPACE/target-kernel"
+        echo "--- 8GB ZRAM Yamasi Uygulaniyor ---"
+        if [ -f drivers/block/zram/zram_drv.c ]; then
+          sed -i 's/default_disksize = .*/default_disksize = 8589934592ULL; /g' drivers/block/zram/zram_drv.c
+          sed -i 's/mem_limit = .*/mem_limit = 6442450944ULL; /g' drivers/block/zram/zram_drv.c
+        fi
 
-          echo "==> Starting Porting Process..."
+        echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
+        echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
 
-          # 1. Defconfig & Vendor Configs
-          echo "[1/6] Copying Defconfigs..."
-          mkdir -p "$TGT/arch/arm64/configs"
-          find "$SRC/arch/arm64/configs/" -iname "*biloba*" -exec cp -v {} "$TGT/arch/arm64/configs/" \; 2>/dev/null || true
-          find "$SRC/arch/arm/configs/" -iname "*biloba*" -exec cp -v {} "$TGT/arch/arm/configs/" \; 2>/dev/null || true
+    - name: Inject Virtual Mali-G810 Topology & Mapper Drivers
+      working-directory: kernel-source
+      run: |
+        echo "--- Topological Virtual Mali-G810 C Dosyalari Olusturuluyor ---"
+        mkdir -p drivers/gpu/drm/virtual_mali/
 
-          # 2. Device Tree (DTS / DTSI)
-          echo "[2/6] Copying Device Trees..."
-          mkdir -p "$TGT/arch/arm64/boot/dts/mediatek"
-          find "$SRC/arch/arm64/boot/dts/" -iname "*biloba*" -exec cp -r -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
-          # Kaynaktaki "biloba" klasörünün içindeki tüm dosyaları (cust.dtsi vb.) oluşturduğumuz alt klasöre kopyala
-          find "$SRC/arch/arm64/boot/dts/" -type d -name "biloba" -exec cp -r -v {}/* "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
-          # Author: Serhat KORKMAZ
-          # arch/arm64/boot/dts/mediatek/ içindeki TÜM dts ve dtsi dosyalarını kopyala
-          if [ -d "$SRC/arch/arm64/boot/dts/mediatek" ]; then
-            echo "Serhat KORKMAZ: MediaTek dizinindeki tum dts/dtsi dosyalari kopyalaniyor..."
-            find "$SRC/arch/arm64/boot/dts/mediatek/" -type f \( -name "*.dts" -o -name "*.dtsi" \) -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
-          fi
+        # 1. Mali-G810 Teknik Özelliklerini ve Topolojisini Tanımlayan .c Dosyası
+        cat << 'EOF' > drivers/gpu/drm/virtual_mali/virtual_mali_g810.c
+        #include <linux/module.h>
+        #include <linux/platform_device.h>
+        #include <linux/slab.h>
 
-          # Ust dizinde (arch/arm64/boot/dts/) kalmis olabilecek biloba dosyalarini da garantiye al
-          find "$SRC/arch/arm64/boot/dts/" -maxdepth 1 -iname "*biloba*" -type f -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/" \; 2>/dev/null || true
+        // Mali-G810 Teknik Mimari Özellikleri Struct Yapısı
+        struct mali_g810_topology_specs {
+            char architecture[32];    // "ARM Valhall 5th Gen"
+            char model_name[32];      // "ARM Mali-G810 vGPU"
+            u32 core_count;           // 10 Shader Cores (MC10)
+            u32 execution_engines;    // 32 Execution Units
+            u32 max_clock_mhz;        // 950 MHz
+            u32 l2_cache_size_kb;     // 2048 KB (2MB)
+            u32 bus_width_bits;       // 256-bit
+            u32 vulkan_api_version;   // Vulkan 1.3 (0x00403000)
+            u32 opengl_es_version;    // OpenGL ES 3.2
+            u64 virt_vram_bytes;      // 2 GB Sanal VRAM
+        };
 
-          # 1. Hamle: Eger SRC icinde herhangi bir yerde cust.dtsi varsa onu bul ve hedefe kopyala
-          find "$SRC" -type f -name "cust.dtsi" -exec cp -v {} "$TGT/arch/arm64/boot/dts/mediatek/biloba/" \; 2>/dev/null || true
-         
-          # Nested "mediatek/" icin kendine referans symlink (cpp quoted include cozumu)
-          ln -sf . "$TGT/arch/arm64/boot/dts/mediatek/mediatek"
+        static struct mali_g810_topology_specs g810_specs = {
+            .architecture = "ARM Valhall Architecture",
+            .model_name = "Mali-G810 Topologic vGPU",
+            .core_count = 10,
+            .execution_engines = 32,
+            .max_clock_mhz = 950,
+            .l2_cache_size_kb = 2048,
+            .bus_width_bits = 256,
+            .vulkan_api_version = 0x00403000,
+            .opengl_es_version = 32,
+            .virt_vram_bytes = 2147483648ULL
+        };
 
-          # Radikal Hamle: Hata veren include satirini kökünden sil!
-          echo "Serhat KORKMAZ: Sorun yaratan #include <biloba/cust.dtsi> satiri dts dosyasindan temizleniyor..."
-          find "$TGT/arch/arm64/boot/dts/mediatek/" -type f -name "*biloba*.dts" -exec sed -i '/#include <biloba\/cust\.dtsi>/d' {} \;
-          
-          # 3. MediaTek & Vendor Drivers
-          echo "[3/6] Porting MediaTek & Touchscreen drivers..."
-          if [ -d "$SRC/drivers/misc/mediatek" ]; then
-            mkdir -p "$TGT/drivers/misc/mediatek"
-            rsync -av --update "$SRC/drivers/misc/mediatek/" "$TGT/drivers/misc/mediatek/"
-          fi
+        struct mali_g810_topology_specs* get_mali_g810_specs(void) {
+            return &g810_specs;
+        }
+        EXPORT_SYMBOL_GPL(get_mali_g810_specs);
 
-          if [ -d "$SRC/drivers/input/touchscreen" ]; then
-            mkdir -p "$TGT/drivers/input/touchscreen"
-            rsync -av --update "$SRC/drivers/input/touchscreen/" "$TGT/drivers/input/touchscreen/"
-          fi
-          # Eski timer API (init_timer/.data/.function) -> yeni (timer_setup/from_timer).
-          # Ikisinde de kod birebir ayni oldugu icin ayni patch calisiyor.
-          python3 - "$TGT/drivers/misc/mediatek/pmic/common/upmu_lbat_service.c" "$TGT/drivers/misc/mediatek/pmic/common/upmu_lbat_service_v2.c" << 'PYEOF'
-          import sys
+        static int virt_mali_g810_probe(struct platform_device *pdev) {
+            pr_info("[MALI-G810-TOPOLOGY] Donanim Topolojisi Yuklendi.\n");
+            pr_info("[MALI-G810-TOPOLOGY] Cihaz: %s | Mimari: %s\n", g810_specs.model_name, g810_specs.architecture);
+            pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n", 
+                    g810_specs.core_count, g810_specs.max_clock_mhz, g810_specs.l2_cache_size_kb);
+            pr_info("[MALI-G810-TOPOLOGY] Desteklenen API: Vulkan 1.3 / OpenGL ES 3.2\n");
+            return 0;
+        }
 
-          old_func = ("static void lbat_timer_func(unsigned long data)\n{\n"
-                      "\tunsigned int deb_prd = 0;\n\tunsigned int deb_times = 0;\n"
-                      "\tstruct lbat_user *user = (struct lbat_user *)data;")
-          new_func = ("static void lbat_timer_func(struct timer_list *t)\n{\n"
-                      "\tunsigned int deb_prd = 0;\n\tunsigned int deb_times = 0;\n"
-                      "\tstruct lbat_user *user = from_timer(user, t, deb_timer);")
+        static struct platform_driver virt_mali_g810_driver = {
+            .probe = virt_mali_g810_probe,
+            .driver = {
+                .name = "virt_mali_g810_device",
+                .owner = THIS_MODULE,
+            },
+        };
 
-          old_init = ("\tinit_timer(&user->deb_timer);\n"
-                      "\tuser->deb_timer.data = (unsigned long)user;\n"
-                      "\tuser->deb_timer.expires = 0;\n"
-                      "\tuser->deb_timer.function = lbat_timer_func;")
-          new_init = ("\ttimer_setup(&user->deb_timer, lbat_timer_func, 0);\n"
-                      "\tuser->deb_timer.expires = 0;")
+        module_platform_driver(virt_mali_g810_driver);
+        MODULE_AUTHOR("Serhat");
+        MODULE_DESCRIPTION("ARM Mali-G810 Hardware Topology Definition");
+        MODULE_LICENSE("GPL");
+        EOF
 
-          for path in sys.argv[1:]:
-              with open(path) as f:
-                  c = f.read()
-              if old_func in c:
-                  c = c.replace(old_func, new_func).replace(old_init, new_init)
-              with open(path, 'w') as f:
-                      f.write(c)
-              print("patched:", path)
-           PYEOF
+        # 2. Donanım Teknik Özelliklerini DRM Sistemine İkinci GPU Olarak Tescil Eden Mapper .c Dosyası
+        cat << 'EOF' > drivers/gpu/drm/virtual_mali/virtual_gpu_mapper.c
+        #include <linux/module.h>
+        #include <drm/drmP.h>
+        #include <drm/drm_drv.h>
+        #include <drm/drm_gem.h>
 
-          # 4. Techpack & Subsystems
-          echo "[4/6] Porting Techpack & Vendor Modules..."
-          if [ -d "$SRC/techpack" ]; then
-            rsync -av --update "$SRC/techpack/" "$TGT/techpack/"
-          fi
-          if [ -d "$SRC/drivers/vendor" ]; then
-            rsync -av --update "$SRC/drivers/vendor/" "$TGT/drivers/vendor/"
-          fi
+        struct mali_g810_topology_specs {
+            char architecture[32];
+            char model_name[32];
+            u32 core_count;
+            u32 execution_engines;
+            u32 max_clock_mhz;
+            u32 l2_cache_size_kb;
+            u32 bus_width_bits;
+            u32 vulkan_api_version;
+            u32 opengl_es_version;
+            u64 virt_vram_bytes;
+        };
 
-          # 5. DT-Bindings & Headers
-          echo "[5/6] Merging Header Dependencies..."
-          if [ -d "$SRC/include/dt-bindings" ]; then
-            rsync -av --update "$SRC/include/dt-bindings/" "$TGT/include/dt-bindings/"
-          fi
-          
-          # MTK/mediatek basliklari include/ altinda dagilmis durumda.
-          # Yolunda "mtk" veya "mediatek" gecen HER header'i ayni goreli yola kopyala.
-          # -n: target'ta zaten olan (mainline) bir header'in ustune yazma.
-          find "$SRC/include" -type f \( -ipath "*mtk*" -o -ipath "*mediatek*" \) | while read -r f; do
-          rel="${f#$SRC/}"
-          mkdir -p "$TGT/$(dirname "$rel")"
-          cp -vn "$f" "$TGT/$rel"
-          done
-          
-          # upmu.c "struct mt6358_chip" istiyor; target'in kendi mainline core.h'i
-          # bunu icermiyor. Dosyayi degistirmek yerine (mt6358-irq.c/mt6397-core.c
-          # kirilir) eksik struct'i mevcut dosyaya MERGE ediyoruz.
-          CORE_H="$TGT/include/linux/mfd/mt6358/core.h"
-          if [ -f "$CORE_H" ] && ! grep -q "struct mt6358_chip" "$CORE_H"; then
-            python3 - "$CORE_H" << 'PYEOF'
-          import sys
-          path = sys.argv[1]
-          snippet = '''struct mt6358_chip {
-          \tstruct device *dev;
-          \tstruct regmap *regmap;
-          \tint irq;
-          \tstruct irq_domain *irq_domain;
-          \tstruct mutex irqlock;
-          \tunsigned int num_sps;
-          \tunsigned int num_pmic_irqs;
-          \tunsigned short top_int_status_reg;
-          };
+        extern struct mali_g810_topology_specs* get_mali_g810_specs(void);
 
-          extern unsigned int mt6358_irq_get_virq(struct device *dev, unsigned int hwirq);
-          extern const char *mt6358_irq_get_name(struct device *dev, unsigned int hwirq);
+        static const struct file_operations virt_gpu_fops = {
+            .owner = THIS_MODULE,
+            .open = drm_open,
+            .release = drm_release,
+            .unlocked_ioctl = drm_ioctl,
+            .mmap = drm_gem_mmap,
+        };
 
-          '''
-          with open(path) as f:
-             c = f.read()
-          c = c.replace('#endif /* __MFD_MT6358_CORE_H__ */', snippet + '#endif /* __MFD_MT6358_CORE_H__ */')
-          with open(path, 'w') as f:
-              f.write(c)
-          PYEOF
-          fi
-          
-          # 6. KBUILD LINKAGE (YENİ EKLENEN KRİTİK ADIM)
-          # Bu adım, kopyalanan dosyaları ana derleme sürecine tanıtır.
-          echo "[6/6] Linking ported drivers and DTS into Kbuild Makefiles..."
-          
-          # MediaTek sürücülerini bağla
-          if [ -d "$TGT/drivers/misc/mediatek" ]; then
-            grep -q "mediatek" "$TGT/drivers/misc/Makefile" || echo 'obj-y += mediatek/' >> "$TGT/drivers/misc/Makefile"
-            grep -q "mediatek" "$TGT/drivers/misc/Kconfig" || sed -i '$a source "drivers/misc/mediatek/Kconfig"' "$TGT/drivers/misc/Kconfig" 2>/dev/null || true
-          fi
-          
-          # Vendor sürücülerini bağla
-          if [ -d "$TGT/drivers/vendor" ]; then
-            grep -q "vendor" "$TGT/drivers/Makefile" || echo 'obj-y += vendor/' >> "$TGT/drivers/Makefile"
-          fi
-          
-          # Techpack klasörünü bağla (Genellikle root dizininde yer alır)
-          if [ -d "$TGT/techpack" ]; then
-            grep -q "techpack" "$TGT/Makefile" || echo 'obj-y += techpack/' >> "$TGT/Makefile"
-          fi
-          
-          # Biloba DTS dosyalarını MediaTek Makefile'ına otomatik ekle
-          DTS_MAKEFILE="$TGT/arch/arm64/boot/dts/mediatek/Makefile"
-          if [ -f "$DTS_MAKEFILE" ]; then
-            find "$TGT/arch/arm64/boot/dts/" -name "*biloba*.dts" -exec basename {} \; | sed 's/\.dts/\.dtb/' | while read dtb_file; do
-              grep -q "$dtb_file" "$DTS_MAKEFILE" || echo "dtb-y += $dtb_file" >> "$DTS_MAKEFILE"
-            done
-          fi
+        static struct drm_driver virt_mali_drm_driver = {
+            .driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_ATOMIC,
+            .fops = &virt_gpu_fops,
+            .name = "mali_g810_vgpu",
+            .desc = "ARM Mali-G810 Virtual Second Graphics Adapter",
+            .date = "20260803",
+            .major = 1,
+            .minor = 0,
+        };
 
-          echo "==> Porting & Linking completed successfully."
-          
-          # DİSK ALANINI RAHATLATMAK İÇİN İŞİ BİTEN KAYNAĞI SİL
-          echo "==> Cleaning up biloba-source to free up disk space..."
-          rm -rf "$SRC"
+        static struct drm_device *vgpu_drm_dev;
+        static struct platform_device *vgpu_pdev;
 
+        static int __init virt_gpu_mapper_init(void) {
+            struct mali_g810_topology_specs *specs = get_mali_g810_specs();
+            int ret;
 
-      - name: Fix Kconfig Help Syntax
-        run: |
-          cd target-kernel
-          echo "==> Normalizing legacy '---help---' to 'help'..."
-          find . -name "Kconfig*" -type f -exec sed -i 's/---help---/help/g' {} +
+            pr_info("[VGPU-MAPPER] Ikinci Sanal GPU Kayit Ediliyor: %s\n", specs->model_name);
 
-          echo "==> Writing Kconfig auto-fixer..."
-          cat > "$GITHUB_WORKSPACE/fix_kconfig.py" << 'PYEOF'
-          #!/usr/bin/env python3
-          # Gercek hata kaynagi: "bool CONFIG_MTK_IMGSENSOR" gibi tirnaksiz
-          # prompt'lar (Xiaomi GPL dump'inda yaygin), help girintisi degil.
-          # Bu script iki seyi tree-wide, idempotent sekilde duzeltir:
-          #  1) bool/tristate/string/int/hex/prompt sonrasi tirnaksiz BUYUK_HARF
-          #     token  -> tirnak icine alinir: bool CONFIG_X -> bool "CONFIG_X"
-          #  2) help blogu icinde girintisiz kalmis satirlara tab eklenir.
-          import os, re, sys
+            // 1. Sanal Platform Cihazını Oluştur
+            vgpu_pdev = platform_device_register_simple("virt_mali_g810_device", -1, NULL, 0);
+            if (IS_ERR(vgpu_pdev)) {
+                pr_err("[VGPU-MAPPER] Platform cihaz kaydi basarisiz!\n");
+                return PTR_ERR(vgpu_pdev);
+            }
 
-          TYPE_KEYWORDS = ("bool", "tristate", "string", "int", "hex", "prompt")
-          BARE_PROMPT_RE = re.compile(
-              r'^(\s*)(' + '|'.join(TYPE_KEYWORDS) + r')(\s+)([A-Z][A-Z0-9_]*)\s*$'
-          )
-          TOP_LEVEL_KEYWORDS = {
-              "config", "menuconfig", "menu", "endmenu", "choice", "endchoice",
-              "if", "endif", "source", "osource", "orsource", "rsource",
-              "comment", "mainmenu",
-          }
+            // 2. DRM Cihazı Tahsis Et (Cekirdek DRM Sisteminde /dev/dri/ Düğümü İçin)
+            vgpu_drm_dev = drm_dev_alloc(&virt_mali_drm_driver, &vgpu_pdev->dev);
+            if (IS_ERR(vgpu_drm_dev)) {
+                pr_err("[VGPU-MAPPER] DRM Cihaz tahsisi hatasi!\n");
+                platform_device_unregister(vgpu_pdev);
+                return PTR_ERR(vgpu_drm_dev);
+            }
 
-          def fix_lines(lines):
-              changed = False
-              in_help = False
-              out = []
-              for line in lines:
-                  stripped = line.rstrip('\r\n')
+            // 3. İkinci Donanım Olarak Sisteme /dev/dri/card1 ve renderD129 Olarak Kaydet
+            ret = drm_dev_register(vgpu_drm_dev, 0);
+            if (ret) {
+                pr_err("[VGPU-MAPPER] DRM Cihazi sisteme tescil edilemedi!\n");
+                drm_dev_put(vgpu_drm_dev);
+                platform_device_unregister(vgpu_pdev);
+                return ret;
+            }
 
-                  m = BARE_PROMPT_RE.match(stripped)
-                  if m and not in_help:
-                      indent, kw, sep, ident = m.groups()
-                      out.append(f'{indent}{kw} "{ident}"' + line[len(stripped):])
-                      changed = True
-                      continue
-
-                  bare = stripped.strip()
-                  if in_help:
-                      if bare == '':
-                          out.append(line)
-                          continue
-                      if stripped[:1] not in (' ', '\t'):
-                          if bare.startswith('#'):
-                              in_help = False
-                              out.append(line)
-                              continue
-                          first_word = bare.split()[0].rstrip(':') if bare.split() else ''
-                          if first_word in TOP_LEVEL_KEYWORDS:
-                              in_help = False
-                              out.append(line)
-                              continue
-                          else:
-                              out.append('\t' + line)
-                              changed = True
-                              continue
-                      out.append(line)
-                      continue
-                  else:
-                      if bare in ('help', '---help---'):
-                          in_help = True
-                      out.append(line)
-              return out, changed
-
-          def fix_file(path):
-              with open(path, 'r', encoding='utf-8', errors='replace') as f:
-                  lines = f.readlines()
-              new_lines, changed = fix_lines(lines)
-              if changed:
-                  with open(path, 'w', encoding='utf-8') as f:
-                      f.writelines(new_lines)
-              return changed
-
-          def main():
-              root = sys.argv[1] if len(sys.argv) > 1 else '.'
-              fixed = []
-              for dirpath, _d, filenames in os.walk(root):
-                  for fn in filenames:
-                      if fn == 'Kconfig' or fn.startswith('Kconfig.'):
-                          p = os.path.join(dirpath, fn)
-                          try:
-                              if fix_file(p):
-                                  fixed.append(p)
-                          except Exception as e:
-                              print(f"skip {p}: {e}", file=sys.stderr)
-              print(f"Kconfig fixer: patched {len(fixed)} file(s)")
-              for p in fixed:
-                  print(" -", p)
-
-          if __name__ == '__main__':
-              main()
-
-          PYEOF
-
-          echo "==> Running Kconfig auto-fixer across target-kernel tree..."
-          python3 "$GITHUB_WORKSPACE/fix_kconfig.py" .
-
-          echo "==> Kconfig syntax fix completed."
-
-      - name: Build Kernel
-        run: |
-          set -o pipefail
-          cd target-kernel
-          
-          export PATH="$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH"
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CC=clang
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-
-          echo "==> Searching for biloba defconfig inside arch/arm64/configs..."
-          
-          # Defconfig dosyasını tara
-          FOUND_DEF_PATH=$(find arch/arm64/configs/ -iname "*biloba*" -type f | head -n 1)
-          
-          if [ -n "$FOUND_DEF_PATH" ]; then
-            DEFCONFIG_NAME=$(basename "$FOUND_DEF_PATH")
-            echo "Found defconfig: $FOUND_DEF_PATH"
+            pr_info("[VGPU-MAPPER] BASARILI! İkinci Donanim Sanal GPU Olarak Eklendi: /dev/dri/renderD129\n");
+            pr_info("[VGPU-MAPPER] %d Cores @ %dMHz (%lld MB VRAM Allocation Capability)\n", 
+                    specs->core_count, specs->max_clock_mhz, specs->virt_vram_bytes / (1024*1024));
             
-            # SADECE dosya farklı bir dizindeyse kopyala
-            if [ "$FOUND_DEF_PATH" != "arch/arm64/configs/$DEFCONFIG_NAME" ]; then
-              echo "Copying $DEFCONFIG_NAME to root configs directory..."
-              cp -f "$FOUND_DEF_PATH" "arch/arm64/configs/"
-            fi
-          else
-            echo "Target defconfig not found by search, fallback to input parameter..."
-            DEFCONFIG_NAME="${{ github.event.inputs.defconfig_name }}"
-          fi
+            return 0;
+        }
 
-          echo "==> Generating .config with ARCH=arm64 ($DEFCONFIG_NAME)..."
-          make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- $DEFCONFIG_NAME 2>&1 | tee build.log
+        static void __exit virt_gpu_mapper_exit(void) {
+            if (vgpu_drm_dev) {
+                drm_dev_unregister(vgpu_drm_dev);
+                drm_dev_put(vgpu_drm_dev);
+            }
+            if (vgpu_pdev) {
+                platform_device_unregister(vgpu_pdev);
+            }
+            pr_info("[VGPU-MAPPER] İkinci Sanal GPU Kaldirildi.\n");
+        }
 
-          # .config dosyası oluşmadıysa varsayılan defconfig ile fallback yap
-          if [ ! -f "out/.config" ]; then
-            echo "WARNING: $DEFCONFIG_NAME failed to produce out/.config! Fallback to standard defconfig..."
-            make O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- defconfig 2>&1 | tee -a build.log
-          fi
+        module_init(virt_gpu_mapper_init);
+        module_exit(virt_gpu_mapper_exit);
+        MODULE_AUTHOR("Serhat");
+        MODULE_DESCRIPTION("Topological Virtual GPU Mapper for Second GPU Registration");
+        MODULE_LICENSE("GPL");
+        EOF
 
-          echo "==> Starting Kernel Compilation..."
-          # BURASI GÜNCELLENDİ: Image.gz ve dtbs eklendi
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            Image.gz dtbs \
-            2>&1 | tee -a build.log
+        # 3. Makefile Entegrasyonu (Sıralı Derleme İle Bağımlılığı Çözme)
+        echo "obj-y += virtual_mali_g810.o" > drivers/gpu/drm/virtual_mali/Makefile
+        echo "obj-y += virtual_gpu_mapper.o" >> drivers/gpu/drm/virtual_mali/Makefile
+        
+        echo "ccflags-y := -Idrivers/gpu/drm" >> drivers/gpu/drm/virtual_mali/Makefile
+        
+        sed -i '$a obj-y += virtual_mali/' drivers/gpu/drm/Makefile
 
-      - name: Package Kernel Output (Image & DTB)
-        run: |
-          cd target-kernel
-          mkdir -p $GITHUB_WORKSPACE/build_output
+    - name: Build Kernel
+      working-directory: kernel-source
+      run: |
+        export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        export CC=clang
+        
+        make O=out biloba_defconfig
+        make O=out -j$(nproc --all)
 
-          cp build.log $GITHUB_WORKSPACE/build_output/ 2>/dev/null || true
-
-          OUT_DIR="out/arch/arm64/boot"
-          
-          if [ -d "$OUT_DIR" ]; then
-            echo "==> Collecting compiled images and DTBs from $OUT_DIR..."
-            find $OUT_DIR -maxdepth 3 \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" -o -name "dtb" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \;
-          else
-            echo "==> Searching whole build directory for Image/DTB files..."
-            find out/ -type f \( -name "Image*" -o -name "*.dtb" -o -name "*.dtbo" \) -exec cp -v {} $GITHUB_WORKSPACE/build_output/ \; || true
-          fi
-
-          cd $GITHUB_WORKSPACE/build_output
-          echo "==> Creating Output Zip Archive..."
-          zip -r $GITHUB_WORKSPACE/biloba-kernel-artifacts.zip .
-
-      - name: Upload Build Log Artifact
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: build-log
-          path: target-kernel/build.log
-
-      - name: Upload Kernel Image & DTB Zip Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: biloba-kernel-artifacts
-          path: biloba-kernel-artifacts.zip
+    - name: Upload Kernel Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Biloba-Topological-MaliG810-Image
+        path: kernel-source/out/arch/arm64/boot/Image.gz-dtb
