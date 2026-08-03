@@ -31,7 +31,7 @@ jobs:
         echo "--- Makefile'lardaki -Werror Bayraklari Temizleniyor ---"
         find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g'
 
-    - name: Inject 2 Dummy Files & 8GB ZRAM Patch
+    - name: Apply Defconfig Patches & Dummy Files
       working-directory: kernel-source
       run: |
         echo "--- Dummy Header Dosyalari Olusturuluyor ---"
@@ -51,6 +51,9 @@ jobs:
           sed -i 's/mem_limit = .*/mem_limit = 6442450944ULL; /g' drivers/block/zram/zram_drv.c
         fi
 
+        echo "--- Stack Protector Kapatiliyor & ZRAM Aktif Ediliyor ---"
+        sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/biloba_defconfig
+        echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
         echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
         echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
 
