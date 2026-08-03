@@ -25,11 +25,11 @@ jobs:
       run: |
         git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
-    - name: Disable -Werror (Uyarıları Görmezden Gel)
+    - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
       run: |
-        echo "--- Makefile'lardaki -Werror Bayraklari Temizleniyor ---"
-        find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g'
+        echo "--- Makefile'lardaki bagimsiz -Werror Bayraklari Temizleniyor ---"
+        find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i -e 's/ -Werror / /g' -e 's/ -Werror$//g' -e 's/^-Werror //g' -e 's/^-Werror$//g'
 
     - name: Apply Defconfig Patches & Dummy Files
       working-directory: kernel-source
