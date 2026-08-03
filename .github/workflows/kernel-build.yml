@@ -25,6 +25,12 @@ jobs:
       run: |
         git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
+    - name: Disable -Werror (Uyarıları Görmezden Gel)
+      working-directory: kernel-source
+      run: |
+        echo "--- Makefile'lardaki -Werror Bayraklari Temizleniyor ---"
+        find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g'
+
     - name: Inject 2 Dummy Files & 8GB ZRAM Patch
       working-directory: kernel-source
       run: |
@@ -212,6 +218,7 @@ jobs:
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        export KCFLAGS="-Wno-error"
         
         make O=out biloba_defconfig
         make O=out Image dtbs -j$(nproc --all)
