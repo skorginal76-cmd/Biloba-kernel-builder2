@@ -1,4 +1,4 @@
-name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
+Name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
 
 on:
   workflow_dispatch:
