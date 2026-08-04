@@ -1,4 +1,4 @@
-Name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
+name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
 
 on:
   workflow_dispatch:
@@ -36,16 +36,24 @@ jobs:
           sed -i 's/__always_inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
 
           echo "=== 2. Touchscreen Missing Firmware & Upgrade Bypass ==="
-          # FTS_UPGRADE_FW_FILE tanımını devre dışı bırakma
-          sed -i 's/#define FTS_UPGRADE_FW_FILE/\/\/#define FTS_UPGRADE_FW_FILE/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
-          sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
-
-          # Eksik fw_huaxing_v0c.i dosyası için dummy (sanal) dosya oluşturma
+          # Firmware dizinlerini olustur
           DRV_FW_DIR="drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware"
           mkdir -p "$DRV_FW_DIR"
           mkdir -p include/firmware
+
+          # Eksik firmware sanal (dummy) dosyalarini olustur
+          touch "$DRV_FW_DIR/fw_sample.i"
           touch "$DRV_FW_DIR/fw_huaxing_v0c.i"
+          touch include/firmware/fw_sample.i
           touch include/firmware/fw_huaxing_v0c.i
+
+          # FTS_UPGRADE_FW_FILE makrosunu tırnak icinde gecerli bir yola bagla
+          sed -i 's/#define FTS_UPGRADE_FW_FILE.*/#define FTS_UPGRADE_FW_FILE "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
+          sed -i 's/#define FTS_UPGRADE_FW2_FILE.*/#define FTS_UPGRADE_FW2_FILE "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
+          sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
+
+          # focaltech_flash.c icindeki dinamik #include makrosunu dummy dosyaya yonlendir
+          sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
 
     - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
@@ -277,3 +285,4 @@ jobs:
           kernel-source/out/arch/arm64/boot/Image.gz
           kernel-source/out/arch/arm64/boot/Image.gz-dtb
           kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
+          
