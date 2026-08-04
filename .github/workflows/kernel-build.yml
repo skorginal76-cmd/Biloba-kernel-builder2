@@ -67,10 +67,33 @@ jobs:
         echo "--- Dummy Header Dosyalari Olusturuluyor ---"
         mkdir -p drivers/misc/mediatek/include/
         
-        echo "#ifndef __MTK_THERMAL_DUMMY_H" > drivers/misc/mediatek/include/mtk_thermal.h
-        echo "#define __MTK_THERMAL_DUMMY_H" >> drivers/misc/mediatek/include/mtk_thermal.h
-        echo "#endif" >> drivers/misc/mediatek/include/mtk_thermal.h
+        # Gelistirilmis Dummy Thermal Header
+        cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
+        #ifndef __MTK_THERMAL_DUMMY_H
+        #define __MTK_THERMAL_DUMMY_H
+
+        enum thermal_bank_name {
+            THERMAL_BANK0 = 0,
+            THERMAL_BANK1,
+            THERMAL_BANK2,
+            THERMAL_BANK3
+        };
+
+        struct TS_PTPOD {
+            int ts_MTS;
+            int ts_BTS;
+        };
+
+        static inline void get_thermal_slope_intercept(struct TS_PTPOD *ts_info, enum thermal_bank_name ts_bank) {
+            if (ts_info) {
+                ts_info->ts_MTS = 0;
+                ts_info->ts_BTS = 0;
+            }
+        }
+        #endif
+        EOF
         
+        # Dummy CMDQ Header
         echo "#ifndef __MTK_CMDQ_DUMMY_H" > drivers/misc/mediatek/include/mtk-cmdq.h
         echo "#define __MTK_CMDQ_DUMMY_H" >> drivers/misc/mediatek/include/mtk-cmdq.h
         echo "#endif" >> drivers/misc/mediatek/include/mtk-cmdq.h
@@ -86,7 +109,7 @@ jobs:
         echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
         echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
         echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
-
+        
     - name: Inject Virtual Mali-G810 Topology & Mapper Drivers
       working-directory: kernel-source
       run: |
