@@ -31,7 +31,7 @@ jobs:
           echo "=== 1. Crypto / Keyslot Manager Inline Fixes ==="
           sed -i 's/inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
           sed -i 's/__always_inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
-          
+
           sed -i 's/inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
           sed -i 's/__always_inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
 
@@ -58,15 +58,27 @@ jobs:
     - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
       run: |
-        echo "--- Makefile'lardaki bagimsiz -Werror Bayraklari Temizleniyor ---"
-        find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i -e 's/ -Werror / /g' -e 's/ -Werror$//g' -e 's/^-Werror //g' -e 's/^-Werror$//g'
+        echo "--- Makefile/Kbuild icinde -Werror, -Werror=xxx ve -Werror-xxx varyantlari temizleniyor ---"
+        # ESKI HATA: 'find . -type f -name Makefile -o -name Kbuild' ifadesinde -type f
+        # sadece ilk -o koluna bagliydi; asil onemlisi eski sed SADECE ciplak "-Werror"
+        # yakaliyordu. drivers/misc/mediatek/Makefile icinde "subdir-ccflags-y += -Werror"
+        # satiri hic temizlenmiyordu ve bu satir gercek suclu. Kbuild, scripts/Makefile.lib
+        # icinde derleme bayraklarini su sirayla birlestiriyor:
+        #   KBUILD_CFLAGS (KCFLAGS burada) -> KBUILD_SUBDIR_CCFLAGS (subdir-ccflags-y) -> ccflags-y
+        # yani subdir-ccflags-y += -Werror, asagidaki KCFLAGS="-Wno-error"'dan SONRA
+        # komut satirina ekleniyor ve onu eziyor -> mtk_gpufreq_core.c'de
+        # get_immediate_gpu_wrap / DRV_Reg32 / DRV_WriteReg32 / mtk_gpufreq_register
+        # implicit-function-declaration hatasi olarak patliyor.
+        find . -type f \( -name "Makefile" -o -name "Kbuild" \) -print0 \
+          | xargs -0 sed -i -E -e 's/(^|[[:space:]])-Werror([=-][A-Za-z0-9_-]+)?([[:space:]]|$)/\1\3/g' \
+          || true
 
     - name: Apply Defconfig Patches & Dummy Files
       working-directory: kernel-source
       run: |
         echo "--- Dummy Header Dosyalari Olusturuluyor ---"
         mkdir -p drivers/misc/mediatek/include/
-        
+
         # Gelistirilmis Dummy Thermal Header
         cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
         #ifndef __MTK_THERMAL_DUMMY_H
@@ -92,7 +104,7 @@ jobs:
         }
         #endif
         EOF
-        
+
         # Dummy CMDQ Header
         echo "#ifndef __MTK_CMDQ_DUMMY_H" > drivers/misc/mediatek/include/mtk-cmdq.h
         echo "#define __MTK_CMDQ_DUMMY_H" >> drivers/misc/mediatek/include/mtk-cmdq.h
@@ -109,7 +121,7 @@ jobs:
         echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
         echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
         echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
-        
+
     - name: Inject Virtual Mali-G810 Topology & Mapper Drivers
       working-directory: kernel-source
       run: |
@@ -124,16 +136,16 @@ jobs:
         #include <linux/types.h>
 
         struct mali_g810_topology_specs {
-            char architecture[32];    
-            char model_name[32];      
-            u32 core_count;           
-            u32 execution_engines;    
-            u32 max_clock_mhz;        
-            u32 l2_cache_size_kb;     
-            u32 bus_width_bits;       
-            u32 vulkan_api_version;   
-            u32 opengl_es_version;    
-            u64 virt_vram_bytes;      
+            char architecture[32];
+            char model_name[32];
+            u32 core_count;
+            u32 execution_engines;
+            u32 max_clock_mhz;
+            u32 l2_cache_size_kb;
+            u32 bus_width_bits;
+            u32 vulkan_api_version;
+            u32 opengl_es_version;
+            u64 virt_vram_bytes;
         };
 
         struct mali_g810_topology_specs* get_mali_g810_specs(void);
@@ -169,7 +181,7 @@ jobs:
         static int virt_mali_g810_probe(struct platform_device *pdev) {
             pr_info("[MALI-G810-TOPOLOGY] Donanim Topolojisi Yuklendi.\n");
             pr_info("[MALI-G810-TOPOLOGY] Cihaz: %s | Mimari: %s\n", g810_specs.model_name, g810_specs.architecture);
-            pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n", 
+            pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n",
                     g810_specs.core_count, g810_specs.max_clock_mhz, g810_specs.l2_cache_size_kb);
             pr_info("[MALI-G810-TOPOLOGY] Desteklenen API: Vulkan 1.3 / OpenGL ES 3.2\n");
             return 0;
@@ -261,18 +273,18 @@ jobs:
         # 4. Makefile Bağlantısı
         echo "obj-y += virtual_mali_g810.o" > drivers/misc/virtual_mali/Makefile
         echo "obj-y += virtual_gpu_mapper.o" >> drivers/misc/virtual_mali/Makefile
-        
+
         echo "obj-y += virtual_mali/" >> drivers/misc/Makefile
 
     - name: Build Kernel (Image & DTBs)
       working-directory: kernel-source
       run: |
         set -o pipefail
-        
+
         export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-        
+
         export CC=clang
         export LD=ld.lld
         export AR=llvm-ar
@@ -280,7 +292,7 @@ jobs:
         export OBJCOPY=llvm-objcopy
         export OBJDUMP=llvm-objdump
         export STRIP=llvm-strip
-        
+
         export HOSTCC=gcc
         export HOSTCXX=g++
         export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -288,7 +300,7 @@ jobs:
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export KCFLAGS="-Wno-error -fgnu89-inline"
         export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
-        
+
         make O=out biloba_defconfig 2>&1 | tee build.log
         make O=out Image Image.gz dtbs -j$(nproc --all) 2>&1 | tee -a build.log
 
@@ -308,4 +320,3 @@ jobs:
           kernel-source/out/arch/arm64/boot/Image.gz
           kernel-source/out/arch/arm64/boot/Image.gz-dtb
           kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
-          
