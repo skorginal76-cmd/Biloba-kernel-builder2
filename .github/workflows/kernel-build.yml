@@ -280,6 +280,30 @@ jobs:
 
         echo "obj-y += virtual_mali/" >> drivers/misc/Makefile
 
+    - name: Provide Missing MTK Register R/W Symbols
+      working-directory: kernel-source
+      run: |
+        echo "--- DRV_Reg32 / DRV_WriteReg32 Eksik Sembolleri (mtk_gpufreq_core.c linker hatasi) ---"
+        cat << 'EOF' > drivers/misc/mtk_reg_rw_stub.c
+        #include <linux/kernel.h>
+        #include <linux/io.h>
+        #include <linux/export.h>
+
+        unsigned int DRV_Reg32(unsigned int addr)
+        {
+            return __raw_readl((void __iomem *)(unsigned long)addr);
+        }
+        EXPORT_SYMBOL(DRV_Reg32);
+
+        void DRV_WriteReg32(unsigned int addr, unsigned int val)
+        {
+            __raw_writel(val, (void __iomem *)(unsigned long)addr);
+        }
+        EXPORT_SYMBOL(DRV_WriteReg32);
+        EOF
+
+        echo "obj-y += mtk_reg_rw_stub.o" >> drivers/misc/Makefile
+
     - name: Build Kernel (Image & DTBs)
       working-directory: kernel-source
       run: |
