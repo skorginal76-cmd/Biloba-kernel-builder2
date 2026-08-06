@@ -55,6 +55,10 @@ jobs:
           # focaltech_flash.c icindeki dinamik #include makrosunu dummy dosyaya yonlendir
           sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
 
+          echo "=== 3. Implicit-Int (Eksik Tip Bildirimi) Duzeltmeleri ==="
+          sed -i 's/static prev_current = -1;/static int prev_current = -1;/' drivers/power/supply/mediatek/charger/smb1351-charger.c || true
+          sed -i 's/extern tpd_gesture_flag;/extern int tpd_gesture_flag;/' drivers/misc/mediatek/video/mt6768/videox/disp_lcm.c || true
+
     - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
       run: |
@@ -298,7 +302,7 @@ jobs:
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        export KCFLAGS="-Wno-error -fgnu89-inline"
+        export KCFLAGS="-Wno-error -fgnu89-inline -Wno-error=implicit-int -Wno-error=implicit-function-declaration"
         export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
 
         make O=out biloba_defconfig 2>&1 | tee build.log
@@ -320,3 +324,4 @@ jobs:
           kernel-source/out/arch/arm64/boot/Image.gz
           kernel-source/out/arch/arm64/boot/Image.gz-dtb
           kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
+          
