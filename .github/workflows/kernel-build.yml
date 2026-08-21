@@ -1,4 +1,4 @@
-name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build
+name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build (Ubuntu 20.04)
 
 on:
   workflow_dispatch:
@@ -6,16 +6,25 @@ on:
 jobs:
   build:
     name: Build Kernel with Topological Virtual GPU
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    # Bu blok, tüm job'ın saf bir Ubuntu 20.04 ortamında çalışmasını sağlar
+    container:
+      image: ubuntu:20.04
 
     steps:
+    - name: Prepare Ubuntu 20.04 Container Environment
+      run: |
+        apt-get update
+        # Etkileşimli (interaktif) kurulum pencerelerini kapatıp temel paketleri kuruyoruz
+        DEBIAN_FRONTEND=noninteractive apt-get install -y sudo git curl tzdata
+
     - name: Checkout Repository
       uses: actions/checkout@v4
 
     - name: Set up Build Environment
       run: |
         sudo apt-get update
-        sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+        DEBIAN_FRONTEND=noninteractive sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
 
     - name: Clone Toolchain (Proton-Clang)
       run: |
@@ -31,7 +40,7 @@ jobs:
           echo "=== 1. Crypto / Keyslot Manager Inline Fixes ==="
           sed -i 's/inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
           sed -i 's/__always_inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
-
+          
           sed -i 's/inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
           sed -i 's/__always_inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
 
@@ -55,61 +64,22 @@ jobs:
           # focaltech_flash.c icindeki dinamik #include makrosunu dummy dosyaya yonlendir
           sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
 
-          echo "=== 3. Implicit-Int (Eksik Tip Bildirimi) Duzeltmeleri ==="
-          sed -i 's/static prev_current = -1;/static int prev_current = -1;/' drivers/power/supply/mediatek/charger/smb1351-charger.c || true
-          sed -i 's/extern tpd_gesture_flag;/extern int tpd_gesture_flag;/' drivers/misc/mediatek/video/mt6768/videox/disp_lcm.c || true
-
     - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
       working-directory: kernel-source
       run: |
-        echo "--- Makefile/Kbuild icinde -Werror, -Werror=xxx ve -Werror-xxx varyantlari temizleniyor ---"
-        # ESKI HATA: 'find . -type f -name Makefile -o -name Kbuild' ifadesinde -type f
-        # sadece ilk -o koluna bagliydi; asil onemlisi eski sed SADECE ciplak "-Werror"
-        # yakaliyordu. drivers/misc/mediatek/Makefile icinde "subdir-ccflags-y += -Werror"
-        # satiri hic temizlenmiyordu ve bu satir gercek suclu. Kbuild, scripts/Makefile.lib
-        # icinde derleme bayraklarini su sirayla birlestiriyor:
-        #   KBUILD_CFLAGS (KCFLAGS burada) -> KBUILD_SUBDIR_CCFLAGS (subdir-ccflags-y) -> ccflags-y
-        # yani subdir-ccflags-y += -Werror, asagidaki KCFLAGS="-Wno-error"'dan SONRA
-        # komut satirina ekleniyor ve onu eziyor -> mtk_gpufreq_core.c'de
-        # get_immediate_gpu_wrap / DRV_Reg32 / DRV_WriteReg32 / mtk_gpufreq_register
-        # implicit-function-declaration hatasi olarak patliyor.
-        find . -type f \( -name "Makefile" -o -name "Kbuild" \) -print0 \
-          | xargs -0 sed -i -E -e 's/(^|[[:space:]])-Werror([=-][A-Za-z0-9_-]+)?([[:space:]]|$)/\1\3/g' \
-          || true
+        echo "--- Makefile'lardaki bagimsiz -Werror Bayraklari Temizleniyor ---"
+        find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i -e 's/ -Werror / /g' -e 's/ -Werror$//g' -e 's/^-Werror //g' -e 's/^-Werror$//g'
 
     - name: Apply Defconfig Patches & Dummy Files
       working-directory: kernel-source
       run: |
         echo "--- Dummy Header Dosyalari Olusturuluyor ---"
         mkdir -p drivers/misc/mediatek/include/
-
-        # Gelistirilmis Dummy Thermal Header
-        cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
-        #ifndef __MTK_THERMAL_DUMMY_H
-        #define __MTK_THERMAL_DUMMY_H
-
-        enum thermal_bank_name {
-            THERMAL_BANK0 = 0,
-            THERMAL_BANK1,
-            THERMAL_BANK2,
-            THERMAL_BANK3
-        };
-
-        struct TS_PTPOD {
-            int ts_MTS;
-            int ts_BTS;
-        };
-
-        static inline void get_thermal_slope_intercept(struct TS_PTPOD *ts_info, enum thermal_bank_name ts_bank) {
-            if (ts_info) {
-                ts_info->ts_MTS = 0;
-                ts_info->ts_BTS = 0;
-            }
-        }
-        #endif
-        EOF
-
-        # Dummy CMDQ Header
+        
+        echo "#ifndef __MTK_THERMAL_DUMMY_H" > drivers/misc/mediatek/include/mtk_thermal.h
+        echo "#define __MTK_THERMAL_DUMMY_H" >> drivers/misc/mediatek/include/mtk_thermal.h
+        echo "#endif" >> drivers/misc/mediatek/include/mtk_thermal.h
+        
         echo "#ifndef __MTK_CMDQ_DUMMY_H" > drivers/misc/mediatek/include/mtk-cmdq.h
         echo "#define __MTK_CMDQ_DUMMY_H" >> drivers/misc/mediatek/include/mtk-cmdq.h
         echo "#endif" >> drivers/misc/mediatek/include/mtk-cmdq.h
@@ -132,7 +102,6 @@ jobs:
         echo "--- Topological Virtual Mali-G810 C Dosyalari Olusturuluyor ---"
         mkdir -p drivers/misc/virtual_mali/
 
-        # 1. Ortak Header Dosyası
         cat << 'EOF' > drivers/misc/virtual_mali/virtual_mali.h
         #ifndef __VIRTUAL_MALI_H
         #define __VIRTUAL_MALI_H
@@ -140,16 +109,16 @@ jobs:
         #include <linux/types.h>
 
         struct mali_g810_topology_specs {
-            char architecture[32];
-            char model_name[32];
-            u32 core_count;
-            u32 execution_engines;
-            u32 max_clock_mhz;
-            u32 l2_cache_size_kb;
-            u32 bus_width_bits;
-            u32 vulkan_api_version;
-            u32 opengl_es_version;
-            u64 virt_vram_bytes;
+            char architecture[32];    
+            char model_name[32];      
+            u32 core_count;           
+            u32 execution_engines;    
+            u32 max_clock_mhz;        
+            u32 l2_cache_size_kb;     
+            u32 bus_width_bits;       
+            u32 vulkan_api_version;   
+            u32 opengl_es_version;    
+            u64 virt_vram_bytes;      
         };
 
         struct mali_g810_topology_specs* get_mali_g810_specs(void);
@@ -157,7 +126,6 @@ jobs:
         #endif
         EOF
 
-        # 2. Mali-G810 Topoloji ve Donanım Sürücüsü
         cat << 'EOF' > drivers/misc/virtual_mali/virtual_mali_g810.c
         #include <linux/module.h>
         #include <linux/platform_device.h>
@@ -185,7 +153,7 @@ jobs:
         static int virt_mali_g810_probe(struct platform_device *pdev) {
             pr_info("[MALI-G810-TOPOLOGY] Donanim Topolojisi Yuklendi.\n");
             pr_info("[MALI-G810-TOPOLOGY] Cihaz: %s | Mimari: %s\n", g810_specs.model_name, g810_specs.architecture);
-            pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n",
+            pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n", 
                     g810_specs.core_count, g810_specs.max_clock_mhz, g810_specs.l2_cache_size_kb);
             pr_info("[MALI-G810-TOPOLOGY] Desteklenen API: Vulkan 1.3 / OpenGL ES 3.2\n");
             return 0;
@@ -205,7 +173,6 @@ jobs:
         MODULE_LICENSE("GPL");
         EOF
 
-        # 3. Virtual GPU Mapper Sürücüsü (Misc Device Interface)
         cat << 'EOF' > drivers/misc/virtual_mali/virtual_gpu_mapper.c
         #include <linux/module.h>
         #include <linux/platform_device.h>
@@ -274,45 +241,20 @@ jobs:
         MODULE_LICENSE("GPL");
         EOF
 
-        # 4. Makefile Bağlantısı
         echo "obj-y += virtual_mali_g810.o" > drivers/misc/virtual_mali/Makefile
         echo "obj-y += virtual_gpu_mapper.o" >> drivers/misc/virtual_mali/Makefile
-
+        
         echo "obj-y += virtual_mali/" >> drivers/misc/Makefile
-
-    - name: Provide Missing MTK Register R/W Symbols
-      working-directory: kernel-source
-      run: |
-        echo "--- DRV_Reg32 / DRV_WriteReg32 Eksik Sembolleri (mtk_gpufreq_core.c linker hatasi) ---"
-        cat << 'EOF' > drivers/misc/mtk_reg_rw_stub.c
-        #include <linux/kernel.h>
-        #include <linux/io.h>
-        #include <linux/export.h>
-
-        unsigned int DRV_Reg32(unsigned int addr)
-        {
-            return __raw_readl((void __iomem *)(unsigned long)addr);
-        }
-        EXPORT_SYMBOL(DRV_Reg32);
-
-        void DRV_WriteReg32(unsigned int addr, unsigned int val)
-        {
-            __raw_writel(val, (void __iomem *)(unsigned long)addr);
-        }
-        EXPORT_SYMBOL(DRV_WriteReg32);
-        EOF
-
-        echo "obj-y += mtk_reg_rw_stub.o" >> drivers/misc/Makefile
 
     - name: Build Kernel (Image & DTBs)
       working-directory: kernel-source
       run: |
         set -o pipefail
-
+        
         export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-
+        
         export CC=clang
         export LD=ld.lld
         export AR=llvm-ar
@@ -320,15 +262,15 @@ jobs:
         export OBJCOPY=llvm-objcopy
         export OBJDUMP=llvm-objdump
         export STRIP=llvm-strip
-
+        
         export HOSTCC=gcc
         export HOSTCXX=g++
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        export KCFLAGS="-Wno-error -fgnu89-inline -Wno-error=implicit-int -Wno-error=implicit-function-declaration"
+        export KCFLAGS="-Wno-error -fgnu89-inline"
         export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
-
+        
         make O=out biloba_defconfig 2>&1 | tee build.log
         make O=out Image Image.gz dtbs -j$(nproc --all) 2>&1 | tee -a build.log
 
@@ -348,4 +290,3 @@ jobs:
           kernel-source/out/arch/arm64/boot/Image.gz
           kernel-source/out/arch/arm64/boot/Image.gz-dtb
           kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
-          
