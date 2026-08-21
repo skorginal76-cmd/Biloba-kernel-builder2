@@ -248,9 +248,9 @@ jobs:
 
     - name: Build Kernel (Image & DTBs)
       working-directory: kernel-source
+      shell: bash # <--- BURA EKLENDİ (Varsayılan sh yerine bash kullanmasını sağlar)
       run: |
-        set -o pipefail
-        
+        # set -o pipefail satırını sildik çünkü shell: bash bunu otomatik yapar
         export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
@@ -273,13 +273,6 @@ jobs:
         
         make O=out biloba_defconfig 2>&1 | tee build.log
         make O=out Image Image.gz dtbs -j$(nproc --all) 2>&1 | tee -a build.log
-
-    - name: Upload Build Log Artifact
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: Build-Log
-        path: kernel-source/build.log
 
     - name: Upload Kernel & DTB Artifacts
       uses: actions/upload-artifact@v4
