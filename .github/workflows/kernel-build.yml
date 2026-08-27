@@ -34,9 +34,9 @@ jobs:
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabi g++-arm-linux-gnueabi \
             python3 python-is-python3 rsync kmod libelf-dev device-tree-compiler
 
-      - name: Clone Toolchain (Proton-Clang)
+      - name: Clone Toolchain (Android Clang r383902b - 11.0.2)
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang toolchain
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r383902b toolchain
 
       - name: Clone Kernel Source (biloba-r-oss)
         run: |
@@ -271,7 +271,6 @@ jobs:
         run: |
           export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
           
-          # Make parametreleri için derleyici argümanlarını tek bir değişkende toplayalım
           MAKE_ARGS="O=out ARCH=arm64 SUBARCH=arm64 \
             CC=clang \
             LD=ld.lld \
@@ -280,12 +279,13 @@ jobs:
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
             STRIP=llvm-strip \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             HOSTCC=gcc \
             HOSTCXX=g++"
           
-          export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-mismatched-pointer-types -Wno-incompatible-pointer-types -fgnu89-inline"
+          export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-unknown-warning-option -fgnu89-inline"
           export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
           
           echo "=== 1. Defconfig Yapilandirmasi Yapiliyor ===" | tee build.log
@@ -312,4 +312,3 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
           if-no-files-found: warn
-          
