@@ -7,24 +7,32 @@ jobs:
   build:
     name: Build Kernel with Topological Virtual GPU
     runs-on: ubuntu-latest
-    # Bu blok, tüm job'ın saf bir Ubuntu 20.04 ortamında çalışmasını sağlar
     container:
       image: ubuntu:20.04
 
     steps:
     - name: Prepare Ubuntu 20.04 Container Environment
       run: |
+        export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        # Etkileşimli (interaktif) kurulum pencerelerini kapatıp temel paketleri kuruyoruz
-        DEBIAN_FRONTEND=noninteractive apt-get install -y sudo git curl tzdata
+        apt-get install -y sudo git curl tzdata
 
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Set up Build Environment
+    - name: Set up Build Environment & Dependencies
       run: |
-        sudo apt-get update
-        DEBIAN_FRONTEND=noninteractive sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        apt-get install -y \
+          git ccache automake flex lzop bison gperf build-essential zip curl \
+          zlib1g-dev libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev \
+          squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng \
+          maven libssl-dev pwgen libswitch-perl policycoreutils minicom \
+          libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses-dev \
+          x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev xsltproc unzip \
+          gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabi g++-arm-linux-gnueabi \
+          python3 python-is-python3 rsync kmod libelf-dev device-tree-compiler
 
     - name: Clone Toolchain (Proton-Clang)
       run: |
@@ -34,41 +42,38 @@ jobs:
       run: |
         git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
-    - name: Apply Hotfixes for Compiler Errors
+    - name: Apply Hotfixes for Compiler & Header Errors
       working-directory: kernel-source
       run: |
           echo "=== 1. Crypto / Keyslot Manager Inline Fixes ==="
-          sed -i 's/inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
-          sed -i 's/__always_inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
+          sed -i 's/inline void ksm_flock/static inline void ksm_flock/g' include/linux/keyslot-manager.h || true
+          sed -i 's/__always_inline void ksm_flock/static __always_inline void ksm_flock/g' include/linux/keyslot-manager.h || true
           
-          sed -i 's/inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
-          sed -i 's/__always_inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
+          sed -i 's/inline void blk_crypto_flock/static inline void blk_crypto_flock/g' include/linux/blk-crypto.h || true
+          sed -i 's/__always_inline void blk_crypto_flock/static __always_inline void blk_crypto_flock/g' include/linux/blk-crypto.h || true
 
           echo "=== 2. Touchscreen Missing Firmware & Upgrade Bypass ==="
-          # Firmware dizinlerini olustur
           DRV_FW_DIR="drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware"
           mkdir -p "$DRV_FW_DIR"
           mkdir -p include/firmware
 
-          # Eksik firmware sanal (dummy) dosyalarini olustur
-          touch "$DRV_FW_DIR/fw_sample.i"
-          touch "$DRV_FW_DIR/fw_huaxing_v0c.i"
-          touch include/firmware/fw_sample.i
-          touch include/firmware/fw_huaxing_v0c.i
+          # C dizisi ilklendirmesinde sentaks hatasi vermemesi icin 0x00 icerigi yaziliyor
+          echo "0x00" > "$DRV_FW_DIR/fw_sample.i"
+          echo "0x00" > "$DRV_FW_DIR/fw_huaxing_v0c.i"
+          echo "0x00" > include/firmware/fw_sample.i
+          echo "0x00" > include/firmware/fw_huaxing_v0c.i
 
-          # FTS_UPGRADE_FW_FILE makrosunu tırnak icinde gecerli bir yola bagla
           sed -i 's/#define FTS_UPGRADE_FW_FILE.*/#define FTS_UPGRADE_FW_FILE "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
           sed -i 's/#define FTS_UPGRADE_FW2_FILE.*/#define FTS_UPGRADE_FW2_FILE "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
           sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
 
-          # focaltech_flash.c icindeki dinamik #include makrosunu dummy dosyaya yonlendir
           sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
 
-    - name: Disable -Werror (Uyarıları Güvenli Şekilde Görmezden Gel)
+    - name: Disable -Werror (Global Flags Clean)
       working-directory: kernel-source
       run: |
         echo "--- Makefile'lardaki bagimsiz -Werror Bayraklari Temizleniyor ---"
-        find . -type f -name "Makefile" -o -name "Kbuild" | xargs sed -i -e 's/ -Werror / /g' -e 's/ -Werror$//g' -e 's/^-Werror //g' -e 's/^-Werror$//g'
+        find . -type f \( -name "Makefile" -o -name "Kbuild" \) -exec sed -i -e 's/ -Werror / /g' -e 's/ -Werror$//g' -e 's/^-Werror //g' -e 's/^-Werror$//g' {} +
 
     - name: Apply Defconfig Patches & Dummy Files
       working-directory: kernel-source
@@ -76,13 +81,17 @@ jobs:
         echo "--- Dummy Header Dosyalari Olusturuluyor ---"
         mkdir -p drivers/misc/mediatek/include/
         
-        echo "#ifndef __MTK_THERMAL_DUMMY_H" > drivers/misc/mediatek/include/mtk_thermal.h
-        echo "#define __MTK_THERMAL_DUMMY_H" >> drivers/misc/mediatek/include/mtk_thermal.h
-        echo "#endif" >> drivers/misc/mediatek/include/mtk_thermal.h
-        
-        echo "#ifndef __MTK_CMDQ_DUMMY_H" > drivers/misc/mediatek/include/mtk-cmdq.h
-        echo "#define __MTK_CMDQ_DUMMY_H" >> drivers/misc/mediatek/include/mtk-cmdq.h
-        echo "#endif" >> drivers/misc/mediatek/include/mtk-cmdq.h
+        cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
+        #ifndef __MTK_THERMAL_DUMMY_H
+        #define __MTK_THERMAL_DUMMY_H
+        #endif
+        EOF
+
+        cat << 'EOF' > drivers/misc/mediatek/include/mtk-cmdq.h
+        #ifndef __MTK_CMDQ_DUMMY_H
+        #define __MTK_CMDQ_DUMMY_H
+        #endif
+        EOF
 
         echo "--- 8GB ZRAM Yamasi Uygulaniyor ---"
         if [ -f drivers/block/zram/zram_drv.c ]; then
@@ -241,16 +250,18 @@ jobs:
         MODULE_LICENSE("GPL");
         EOF
 
-        echo "obj-y += virtual_mali_g810.o" > drivers/misc/virtual_mali/Makefile
-        echo "obj-y += virtual_gpu_mapper.o" >> drivers/misc/virtual_mali/Makefile
-        
+        cat << 'EOF' > drivers/misc/virtual_mali/Makefile
+        ccflags-y += -I$(srctree)/drivers/misc/virtual_mali
+        obj-y += virtual_mali_g810.o
+        obj-y += virtual_gpu_mapper.o
+        EOF
+
         echo "obj-y += virtual_mali/" >> drivers/misc/Makefile
 
-    - name: Build Kernel (Image & DTBs)
+    - name: Build Kernel & Device Tree
       working-directory: kernel-source
-      shell: bash # <--- BURA EKLENDİ (Varsayılan sh yerine bash kullanmasını sağlar)
+      shell: bash
       run: |
-        # set -o pipefail satırını sildik çünkü shell: bash bunu otomatik yapar
         export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
@@ -268,18 +279,31 @@ jobs:
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        export KCFLAGS="-Wno-error -fgnu89-inline"
+        
+        export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-mismatched-pointer-types -Wno-incompatible-pointer-types -fgnu89-inline"
         export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
         
-        make O=out biloba_defconfig 2>&1 | tee build.log
+        echo "=== 1. Defconfig Yapilandirmasi Yapiliyor ===" | tee build.log
+        make O=out biloba_defconfig 2>&1 | tee -a build.log
+        
+        echo "=== 2. Çekirdek ve DTB Derlemesi Baslatiliyor ===" | tee -a build.log
         make O=out Image Image.gz dtbs -j$(nproc --all) 2>&1 | tee -a build.log
+
+        echo "=== 3. Image.gz-dtb Yapilandırma Kontrolü ve Birleştirme ===" | tee -a build.log
+        if [ ! -f out/arch/arm64/boot/Image.gz-dtb ]; then
+          echo "[INFO] Image.gz-dtb doğrudan bulunamadı, DTB birleştirme işlemi uygulanıyor..." | tee -a build.log
+          cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/mediatek/*.dtb > out/arch/arm64/boot/Image.gz-dtb 2>/dev/null || true
+        fi
 
     - name: Upload Kernel & DTB Artifacts
       uses: actions/upload-artifact@v4
+      if: always()
       with:
-        name: Biloba-Kernel-Image-And-DTB
+        name: Biloba-Kernel-Image-DTB-And-Logs
         path: |
+          kernel-source/build.log
           kernel-source/out/arch/arm64/boot/Image
           kernel-source/out/arch/arm64/boot/Image.gz
           kernel-source/out/arch/arm64/boot/Image.gz-dtb
           kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
+        if-no-files-found: warn
