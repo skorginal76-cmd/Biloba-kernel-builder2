@@ -46,11 +46,8 @@ jobs:
       working-directory: kernel-source
       run: |
           echo "=== 1. Crypto / Keyslot Manager Inline Fixes ==="
-          sed -i 's/inline void ksm_flock/static inline void ksm_flock/g' include/linux/keyslot-manager.h || true
-          sed -i 's/__always_inline void ksm_flock/static __always_inline void ksm_flock/g' include/linux/keyslot-manager.h || true
-          
-          sed -i 's/inline void blk_crypto_flock/static inline void blk_crypto_flock/g' include/linux/blk-crypto.h || true
-          sed -i 's/__always_inline void blk_crypto_flock/static __always_inline void blk_crypto_flock/g' include/linux/blk-crypto.h || true
+          sed -i 's/.*ksm_flock.*/static inline void ksm_flock(struct keyslot_manager *ksm, unsigned int flags) {}/g' include/linux/keyslot-manager.h || true
+          sed -i 's/.*blk_crypto_flock.*/static inline void blk_crypto_flock(struct keyslot_manager *ksm, unsigned int flags) {}/g' include/linux/blk-crypto.h || true
 
           echo "=== 2. Touchscreen Missing Firmware & Upgrade Bypass ==="
           DRV_FW_DIR="drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware"
@@ -82,6 +79,7 @@ jobs:
         mkdir -p drivers/misc/mediatek/include/
         
         cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
+        #ifndef __MTK_THERMAL_DUMMY_H
         #ifndef __MTK_THERMAL_DUMMY_H
         #define __MTK_THERMAL_DUMMY_H
         #endif
@@ -307,3 +305,4 @@ jobs:
           kernel-source/out/arch/arm64/boot/Image.gz-dtb
           kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
         if-no-files-found: warn
+        
