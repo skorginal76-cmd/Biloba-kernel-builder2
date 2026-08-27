@@ -46,8 +46,18 @@ jobs:
       working-directory: kernel-source
       run: |
           echo "=== 1. Crypto / Keyslot Manager Inline Fixes ==="
-          sed -i 's/.*ksm_flock.*/static inline void ksm_flock(struct keyslot_manager *ksm, unsigned int flags) {}/g' include/linux/keyslot-manager.h || true
-          sed -i 's/.*blk_crypto_flock.*/static inline void blk_crypto_flock(struct keyslot_manager *ksm, unsigned int flags) {}/g' include/linux/blk-crypto.h || true
+          if [ -f include/linux/keyslot-manager.h ]; then
+            sed -i 's/static inline void ksm_flock/void ksm_flock/g' include/linux/keyslot-manager.h || true
+          fi
+          if [ -f block/keyslot-manager.c ]; then
+            sed -i 's/inline void ksm_flock/void ksm_flock/g' block/keyslot-manager.c || true
+          fi
+          if [ -f include/linux/blk-crypto.h ]; then
+            sed -i 's/static inline void blk_crypto_flock/void blk_crypto_flock/g' include/linux/blk-crypto.h || true
+          fi
+          if [ -f block/blk-crypto.c ]; then
+            sed -i 's/inline void blk_crypto_flock/void blk_crypto_flock/g' block/blk-crypto.c || true
+          fi
 
           echo "=== 2. Touchscreen Missing Firmware & Upgrade Bypass ==="
           DRV_FW_DIR="drivers/input/touchscreen/mediatek/ft8719_spi/include/firmware"
@@ -79,7 +89,6 @@ jobs:
         mkdir -p drivers/misc/mediatek/include/
         
         cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
-        #ifndef __MTK_THERMAL_DUMMY_H
         #ifndef __MTK_THERMAL_DUMMY_H
         #define __MTK_THERMAL_DUMMY_H
         #endif
