@@ -34,9 +34,9 @@ jobs:
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-arm-linux-gnueabi g++-arm-linux-gnueabi \
             python3 python-is-python3 rsync kmod libelf-dev device-tree-compiler
 
-      - name: Clone Toolchain (Android Clang r383902b - 11.0.2)
+      - name: Clone Toolchain (crDroid Clang 11.0.2 - 6573524)
         run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r383902b toolchain
+          git clone --depth=1 https://github.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-6573524 toolchain
 
       - name: Clone Kernel Source (biloba-r-oss)
         run: |
@@ -64,7 +64,6 @@ jobs:
           mkdir -p "$DRV_FW_DIR"
           mkdir -p include/firmware
 
-          # C dizisi ilklendirmesinde sentaks hatasi vermemesi icin 0x00 icerigi yaziliyor
           echo "0x00" > "$DRV_FW_DIR/fw_sample.i"
           echo "0x00" > "$DRV_FW_DIR/fw_huaxing_v0c.i"
           echo "0x00" > include/firmware/fw_sample.i
