@@ -75,6 +75,37 @@ jobs:
 
           sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
 
+      - name: Apply mtk_eem.c Thermal Dummy Header Patch
+        working-directory: kernel-source
+        run: |
+          echo "=== mtk_eem.c Termal Hatalari Icin Dummy Header Olusturuluyor ==="
+          EEM_DIR="drivers/misc/mediatek/base/power/eem_v2/mt6768"
+          EEM_FILE="$EEM_DIR/mtk_eem.c"
+          
+          if [ -f "$EEM_FILE" ]; then
+            cat << 'EOF' > "$EEM_DIR/mtk_ts_ptpod_dummy.h"
+          #ifndef __MTK_TS_PTPOD_DUMMY_H
+          #define __MTK_TS_PTPOD_DUMMY_H
+
+          enum thermal_bank_name {
+              THERMAL_BANK0 = 0,
+              THERMAL_BANK1,
+              THERMAL_BANK2,
+              THERMAL_BANK3,
+          };
+
+          struct TS_PTPOD {
+              int dummy_temp;
+          };
+
+          #endif
+          EOF
+            sed -i '1i #include "mtk_ts_ptpod_dummy.h"' "$EEM_FILE"
+            echo "Dummy header basariyla mtk_eem.c icine eklendi."
+          else
+            echo "[UYARI] $EEM_FILE bulunamadi!"
+          fi
+
       - name: Disable -Werror (Global Flags Clean)
         working-directory: kernel-source
         run: |
@@ -317,4 +348,3 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
           if-no-files-found: warn
-          
