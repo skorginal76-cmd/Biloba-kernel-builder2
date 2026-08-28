@@ -107,6 +107,11 @@ jobs:
 
           echo "--- Stack Protector Kapatiliyor & ZRAM Aktif Ediliyor ---"
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/biloba_defconfig
+          
+          # Çakışmaları önlemek için eski ZRAM tanımlarını sil
+          sed -i '/CONFIG_ZRAM/d' arch/arm64/configs/biloba_defconfig
+          sed -i '/CONFIG_ZSMALLOC/d' arch/arm64/configs/biloba_defconfig
+          
           echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
@@ -284,7 +289,8 @@ jobs:
             HOSTCC=gcc \
             HOSTCXX=g++"
           
-          export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-unknown-warning-option -fgnu89-inline"
+          # Derleme uyarılarını tamamen engellemek için gerekli tüm Wno bayrakları eklendi
+          export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-unknown-warning-option -fgnu89-inline -Wno-unused-function -Wno-unused-variable -Wno-declaration-after-statement -Wno-dangling-else"
           export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
           
           echo "=== 1. Defconfig Yapilandirmasi Yapiliyor ===" | tee build.log
@@ -311,3 +317,4 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
           if-no-files-found: warn
+          
