@@ -167,7 +167,7 @@ jobs:
           echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
        
-       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
+      - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
         run: |
           echo "=== mtk_gpufreq_core.c Inline IO Fix ==="
