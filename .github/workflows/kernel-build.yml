@@ -74,7 +74,26 @@ jobs:
           sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
 
           sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
-
+      
+      - name: Fix mtk-vcu Makefile Duplicate Object Link
+        working-directory: kernel-source
+        run: |
+          echo "=== mtk-vcu Makefile Duplicate Symbol Fix ==="
+          MTK_VCU_MK="drivers/media/platform/mtk-vcu/Makefile"
+          if [ -f "$MTK_VCU_MK" ]; then
+            # mtk_vcodec_mem.o'yu composite object listesinden zaten ekli,
+            # obj-$(CONFIG_VIDEO_MEDIATEK_VCU) satırından tekrar çıkarıyoruz.
+            sed -i 's/obj-\$(CONFIG_VIDEO_MEDIATEK_VCU) += mtk-vcu.o mtk_vcodec_mem.o/obj-\$(CONFIG_VIDEO_MEDIATEK_VCU) += mtk-vcu.o/g' "$MTK_VCU_MK"
+            
+            # Ayrıca subdir-ccflags-y += -Werror varsa, onu da temizleyelim
+            # (Sen zaten global -Werror temizliyorsun ama bu dizin özelinde de var)
+            sed -i 's/subdir-ccflags-y += -Werror/subdir-ccflags-y += /g' "$MTK_VCU_MK" || true
+            
+            echo "Fixed: $(grep 'CONFIG_VIDEO_MEDIATEK_VCU' $MTK_VCU_MK)"
+          else
+            echo "[UYARI] $MTK_VCU_MK bulunamadi!"
+          fi
+          
       - name: Apply mtk_eem.c Thermal Dummy Header Patch
         working-directory: kernel-source
         run: |
