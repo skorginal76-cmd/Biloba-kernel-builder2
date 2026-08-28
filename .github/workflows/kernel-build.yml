@@ -166,6 +166,49 @@ jobs:
           echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
+       
+       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
+        working-directory: kernel-source
+        run: |
+          echo "=== mtk_gpufreq_core.c Inline IO Fix ==="
+          
+          # 1) Dummy header'ı oluştur
+          cat << 'EOF' > drivers/misc/mediatek/include/mtk_typedefs.h
+          #ifndef __MTK_TYPEDEFS_H__
+          #define __MTK_TYPEDEFS_H__
+          #include <linux/io.h>
+          #include <linux/types.h>
+
+          static inline u32 DRV_Reg32(u32 addr)
+          {
+              return readl((void __iomem *)(uintptr_t)addr);
+          }
+
+          static inline void DRV_WriteReg32(u32 addr, u32 val)
+          {
+              writel(val, (void __iomem *)(uintptr_t)addr);
+          }
+
+          static inline void DRV_SetReg32(u32 addr, u32 val)
+          {
+              writel(readl((void __iomem *)(uintptr_t)addr) | val,
+                     (void __iomem *)(uintptr_t)addr);
+          }
+
+          static inline void DRV_ClrReg32(u32 addr, u32 val)
+          {
+              writel(readl((void __iomem *)(uintptr_t)addr) & ~val,
+                     (void __iomem *)(uintptr_t)addr);
+          }
+          #endif /* __MTK_TYPEDEFS_H__ */
+          EOF
+
+          # 2) mtk_gpufreq_core.c dosyasının en üstüne include ekle
+          if ! grep -q "mtk_typedefs.h" drivers/misc/mediatek/base/power/mt6768/mtk_gpufreq_core.c; then
+            sed -i '1i #include <mtk_typedefs.h>' drivers/misc/mediatek/base/power/mt6768/mtk_gpufreq_core.c
+            echo "mtk_typedefs.h include edildi."
+          fi
+          
 
       - name: Inject Virtual Mali-G810 Topology & Mapper Drivers
         working-directory: kernel-source
