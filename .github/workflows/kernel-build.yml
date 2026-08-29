@@ -179,26 +179,24 @@ jobs:
           #include <linux/io.h>
           #include <linux/types.h>
 
-          static inline u32 DRV_Reg32(u32 addr)
+          static inline u32 DRV_Reg32(const volatile void __iomem *addr)
           {
-              return readl((void __iomem *)(uintptr_t)addr);
+              return readl(addr);
           }
 
-          static inline void DRV_WriteReg32(u32 addr, u32 val)
+          static inline void DRV_WriteReg32(volatile void __iomem *addr, u32 val)
           {
-              writel(val, (void __iomem *)(uintptr_t)addr);
+              writel(val, addr);
           }
 
-          static inline void DRV_SetReg32(u32 addr, u32 val)
+          static inline void DRV_SetReg32(volatile void __iomem *addr, u32 val)
           {
-              writel(readl((void __iomem *)(uintptr_t)addr) | val,
-                     (void __iomem *)(uintptr_t)addr);
+              writel(readl(addr) | val, addr);
           }
 
-          static inline void DRV_ClrReg32(u32 addr, u32 val)
+          static inline void DRV_ClrReg32(volatile void __iomem *addr, u32 val)
           {
-              writel(readl((void __iomem *)(uintptr_t)addr) & ~val,
-                     (void __iomem *)(uintptr_t)addr);
+              writel(readl(addr) & ~val, addr);
           }
           #endif /* __MTK_TYPEDEFS_H__ */
           EOF
@@ -411,4 +409,3 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
           if-no-files-found: warn
-          
