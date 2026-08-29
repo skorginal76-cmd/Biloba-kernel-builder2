@@ -2,6 +2,11 @@ name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build (Ubuntu 20.04)
 
 on:
   workflow_dispatch:
+    inputs:
+      stock_localversion:
+        description: 'Orijinal stok kernelin LOCALVERSION eki (uname -r ciktisindaki "4.14.186" disinda kalan kisim, ornegin -perf). Vendor WiFi/BT .ko modullerinin bu kernel ile ayni vermagic e sahip olmasi icin kullanilir.'
+        required: false
+        default: '-perf'
 
 jobs:
   build:
@@ -150,10 +155,34 @@ jobs:
           #endif
           EOF
 
-          echo "--- 8GB ZRAM Yamasi Uygulaniyor ---"
-          if [ -f drivers/block/zram/zram_drv.c ]; then
-            sed -i 's/default_disksize = .*/default_disksize = 8589934592ULL; /g' drivers/block/zram/zram_drv.c
-            sed -i 's/mem_limit = .*/mem_limit = 6442450944ULL; /g' drivers/block/zram/zram_drv.c
+          echo "--- 8GB ZRAM Varsayilan Disksize Yamasi Uygulaniyor ---"
+          ZRAM_DRV="drivers/block/zram/zram_drv.c"
+          if [ -f "$ZRAM_DRV" ]; then
+            cat << 'EOF' > /tmp/zram_default_disksize.txt
+
+          /* 8GB varsayilan disksize: userspace /sys/block/zramN/disksize
+           * hicbir sey yazmasa bile zram_add() icinde otomatik ayarlanir. */
+          {
+                  u64 def_disksize = PAGE_ALIGN(8589934592ULL);
+                  struct zcomp *def_comp;
+
+                  if (zram_meta_alloc(zram, def_disksize)) {
+                          def_comp = zcomp_create(zram->compressor);
+                          if (!IS_ERR(def_comp)) {
+                                  zram->comp = def_comp;
+                                  barrier();
+                                  zram->disksize = def_disksize;
+                                  set_capacity(zram->disk, zram->disksize >> SECTOR_SHIFT);
+                          } else {
+                                  zram_meta_free(zram, def_disksize);
+                          }
+                  }
+          }
+          EOF
+            sed -i '/strlcpy(zram->compressor, default_compressor, sizeof(zram->compressor));/r /tmp/zram_default_disksize.txt' "$ZRAM_DRV"
+            echo "8GB varsayilan disksize enjekte edildi."
+          else
+            echo "[UYARI] $ZRAM_DRV bulunamadi!"
           fi
 
           echo "--- Stack Protector Kapatiliyor & ZRAM Aktif Ediliyor ---"
@@ -166,6 +195,18 @@ jobs:
           echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
+
+      - name: Match Stock Kernel Vermagic (Vendor WiFi/BT .ko Uyumlulugu Icin)
+        working-directory: kernel-source
+        run: |
+          echo "=== LOCALVERSION_AUTO Kapatiliyor (Deterministik Surum Stringi) ==="
+          sed -i '/CONFIG_LOCALVERSION_AUTO/d' arch/arm64/configs/biloba_defconfig
+          echo "# CONFIG_LOCALVERSION_AUTO is not set" >> arch/arm64/configs/biloba_defconfig
+
+          echo "=== LOCALVERSION Stok Degere Ayarlaniyor ==="
+          sed -i '/^CONFIG_LOCALVERSION=/d' arch/arm64/configs/biloba_defconfig
+          echo 'CONFIG_LOCALVERSION="${{ github.event.inputs.stock_localversion }}"' >> arch/arm64/configs/biloba_defconfig
+          echo "LOCALVERSION ayarlandi: ${{ github.event.inputs.stock_localversion }}"
        
       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
@@ -409,3 +450,4 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
           if-no-files-found: warn
+          
