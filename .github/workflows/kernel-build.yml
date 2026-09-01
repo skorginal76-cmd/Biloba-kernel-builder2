@@ -79,33 +79,27 @@ jobs:
           sed -i 's/#define FTS_UPGRADE_EN.*/#define FTS_UPGRADE_EN 0/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_config.h || true
 
           sed -i 's/#include FTS_UPGRADE_FW_FILE/#include "include\/firmware\/fw_sample.i"/g' drivers/input/touchscreen/mediatek/ft8719_spi/focaltech_flash.c || true
-      
+
       - name: Fix mtk-vcu Makefile Duplicate Object Link
         working-directory: kernel-source
         run: |
           echo "=== mtk-vcu Makefile Duplicate Symbol Fix ==="
           MTK_VCU_MK="drivers/media/platform/mtk-vcu/Makefile"
           if [ -f "$MTK_VCU_MK" ]; then
-            # mtk_vcodec_mem.o'yu composite object listesinden zaten ekli,
-            # obj-$(CONFIG_VIDEO_MEDIATEK_VCU) satırından tekrar çıkarıyoruz.
             sed -i 's/obj-\$(CONFIG_VIDEO_MEDIATEK_VCU) += mtk-vcu.o mtk_vcodec_mem.o/obj-\$(CONFIG_VIDEO_MEDIATEK_VCU) += mtk-vcu.o/g' "$MTK_VCU_MK"
-            
-            # Ayrıca subdir-ccflags-y += -Werror varsa, onu da temizleyelim
-            # (Sen zaten global -Werror temizliyorsun ama bu dizin özelinde de var)
             sed -i 's/subdir-ccflags-y += -Werror/subdir-ccflags-y += /g' "$MTK_VCU_MK" || true
-            
             echo "Fixed: $(grep 'CONFIG_VIDEO_MEDIATEK_VCU' $MTK_VCU_MK)"
           else
             echo "[UYARI] $MTK_VCU_MK bulunamadi!"
           fi
-          
+
       - name: Apply mtk_eem.c Thermal Dummy Header Patch
         working-directory: kernel-source
         run: |
           echo "=== mtk_eem.c Termal Hatalari Icin Dummy Header Olusturuluyor ==="
           EEM_DIR="drivers/misc/mediatek/base/power/eem_v2/mt6768"
           EEM_FILE="$EEM_DIR/mtk_eem.c"
-          
+
           if [ -f "$EEM_FILE" ]; then
             cat << 'EOF' > "$EEM_DIR/mtk_ts_ptpod_dummy.h"
           #ifndef __MTK_TS_PTPOD_DUMMY_H
@@ -118,7 +112,7 @@ jobs:
               THERMAL_BANK3,
           };
 
-          struct TS_PTPOD { 
+          struct TS_PTPOD {
               int ts_MTS;
               int ts_BTS;
           };
@@ -142,7 +136,7 @@ jobs:
         run: |
           echo "--- Dummy Header Dosyalari Olusturuluyor ---"
           mkdir -p drivers/misc/mediatek/include/
-          
+
           cat << 'EOF' > drivers/misc/mediatek/include/mtk_thermal.h
           #ifndef __MTK_THERMAL_DUMMY_H
           #define __MTK_THERMAL_DUMMY_H
@@ -155,15 +149,15 @@ jobs:
           #endif
           EOF
 
-          echo "--- 8GB ZRAM Varsayilan Disksize Yamasi Uygulaniyor ---"
+          echo "--- 12GB ZRAM Varsayilan Disksize Yamasi Uygulaniyor ---"
           ZRAM_DRV="drivers/block/zram/zram_drv.c"
           if [ -f "$ZRAM_DRV" ]; then
             cat << 'EOF' > /tmp/zram_default_disksize.txt
 
-          /* 8GB varsayilan disksize: userspace /sys/block/zramN/disksize
+          /* 12GB varsayilan disksize: userspace /sys/block/zramN/disksize
            * hicbir sey yazmasa bile zram_add() icinde otomatik ayarlanir. */
           {
-                  u64 def_disksize = PAGE_ALIGN(8589934592ULL);
+                  u64 def_disksize = PAGE_ALIGN(12884901888ULL);
                   struct zcomp *def_comp;
 
                   if (zram_meta_alloc(zram, def_disksize)) {
@@ -180,18 +174,17 @@ jobs:
           }
           EOF
             sed -i '/strlcpy(zram->compressor, default_compressor, sizeof(zram->compressor));/r /tmp/zram_default_disksize.txt' "$ZRAM_DRV"
-            echo "8GB varsayilan disksize enjekte edildi."
+            echo "12GB varsayilan disksize enjekte edildi."
           else
             echo "[UYARI] $ZRAM_DRV bulunamadi!"
           fi
 
           echo "--- Stack Protector Kapatiliyor & ZRAM Aktif Ediliyor ---"
           sed -i 's/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g' arch/arm64/configs/biloba_defconfig
-          
-          # Çakışmaları önlemek için eski ZRAM tanımlarını sil
+
           sed -i '/CONFIG_ZRAM/d' arch/arm64/configs/biloba_defconfig
           sed -i '/CONFIG_ZSMALLOC/d' arch/arm64/configs/biloba_defconfig
-          
+
           echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZRAM=y" >> arch/arm64/configs/biloba_defconfig
           echo "CONFIG_ZSMALLOC=y" >> arch/arm64/configs/biloba_defconfig
@@ -207,13 +200,27 @@ jobs:
           sed -i '/^CONFIG_LOCALVERSION=/d' arch/arm64/configs/biloba_defconfig
           echo 'CONFIG_LOCALVERSION="${{ github.event.inputs.stock_localversion }}"' >> arch/arm64/configs/biloba_defconfig
           echo "LOCALVERSION ayarlandi: ${{ github.event.inputs.stock_localversion }}"
-       
+
+          echo "=== KRITIK: CONFIG_MODVERSIONS ve MODULE_SIG Kapatiliyor ==="
+          # Vendor WiFi/BT .ko dosyalari stok kaynaktan derlendigi icin bizim
+          # kaynagimizla sembol checksum'lari (CRC) tutmuyor. MODVERSIONS acikken
+          # modprobe/insmod "disagrees about version of symbol" hatasiyla REDDEDIYOR
+          # -> WiFi/BT/Hotspot hic ayaga kalkmiyor. Checksum kontrolunu tamamen
+          # kaldiriyoruz ki vermagic string esitse modul yuklenebilsin.
+          sed -i '/CONFIG_MODVERSIONS/d' arch/arm64/configs/biloba_defconfig
+          echo "# CONFIG_MODVERSIONS is not set" >> arch/arm64/configs/biloba_defconfig
+
+          sed -i '/CONFIG_MODULE_SIG/d' arch/arm64/configs/biloba_defconfig
+          echo "# CONFIG_MODULE_SIG is not set" >> arch/arm64/configs/biloba_defconfig
+
+          sed -i '/^CONFIG_MODULES=/d' arch/arm64/configs/biloba_defconfig
+          echo "CONFIG_MODULES=y" >> arch/arm64/configs/biloba_defconfig
+
       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
         run: |
           echo "=== mtk_gpufreq_core.c Inline IO Fix ==="
-          
-          # 1) Dummy header'ı oluştur
+
           cat << 'EOF' > drivers/misc/mediatek/include/mtk_typedefs.h
           #ifndef __MTK_TYPEDEFS_H__
           #define __MTK_TYPEDEFS_H__
@@ -242,12 +249,10 @@ jobs:
           #endif /* __MTK_TYPEDEFS_H__ */
           EOF
 
-          # 2) mtk_gpufreq_core.c dosyasının en üstüne include ekle
           if ! grep -q "mtk_typedefs.h" drivers/misc/mediatek/base/power/mt6768/mtk_gpufreq_core.c; then
             sed -i '1i #include <mtk_typedefs.h>' drivers/misc/mediatek/base/power/mt6768/mtk_gpufreq_core.c
             echo "mtk_typedefs.h include edildi."
           fi
-          
 
       - name: Inject Virtual Mali-G810 Topology & Mapper Drivers
         working-directory: kernel-source
@@ -262,16 +267,16 @@ jobs:
           #include <linux/types.h>
 
           struct mali_g810_topology_specs {
-              char architecture[32];    
-              char model_name[32];      
-              u32 core_count;           
-              u32 execution_engines;    
-              u32 max_clock_mhz;        
-              u32 l2_cache_size_kb;     
-              u32 bus_width_bits;       
-              u32 vulkan_api_version;   
-              u32 opengl_es_version;    
-              u64 virt_vram_bytes;      
+              char architecture[32];
+              char model_name[32];
+              u32 core_count;
+              u32 execution_engines;
+              u32 max_clock_mhz;
+              u32 l2_cache_size_kb;
+              u32 bus_width_bits;
+              u32 vulkan_api_version;
+              u32 opengl_es_version;
+              u64 virt_vram_bytes;
           };
 
           struct mali_g810_topology_specs* get_mali_g810_specs(void);
@@ -306,7 +311,7 @@ jobs:
           static int virt_mali_g810_probe(struct platform_device *pdev) {
               pr_info("[MALI-G810-TOPOLOGY] Donanim Topolojisi Yuklendi.\n");
               pr_info("[MALI-G810-TOPOLOGY] Cihaz: %s | Mimari: %s\n", g810_specs.model_name, g810_specs.architecture);
-              pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n", 
+              pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n",
                       g810_specs.core_count, g810_specs.max_clock_mhz, g810_specs.l2_cache_size_kb);
               pr_info("[MALI-G810-TOPOLOGY] Desteklenen API: Vulkan 1.3 / OpenGL ES 3.2\n");
               return 0;
@@ -407,7 +412,7 @@ jobs:
         shell: bash
         run: |
           export PATH=$GITHUB_WORKSPACE/toolchain/bin:$PATH
-          
+
           MAKE_ARGS="O=out ARCH=arm64 SUBARCH=arm64 \
             CC=clang \
             LD=ld.lld \
@@ -421,20 +426,29 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             HOSTCC=gcc \
             HOSTCXX=g++"
-          
-          # Derleme uyarılarını tamamen engellemek için gerekli tüm Wno bayrakları eklendi
+
           export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-unknown-warning-option -fgnu89-inline -Wno-unused-function -Wno-unused-variable -Wno-declaration-after-statement -Wno-dangling-else"
           export HOSTCFLAGS="-Wno-deprecated-declarations -Wno-error"
-          
+
           echo "=== 1. Defconfig Yapilandirmasi Yapiliyor ===" | tee build.log
           make $MAKE_ARGS biloba_defconfig 2>&1 | tee -a build.log
-          
-          echo "=== 2. Çekirdek ve DTB Derlemesi Baslatiliyor ===" | tee -a build.log
+
+          echo "=== 2. Cekirdek ve DTB Derlemesi Baslatiliyor ===" | tee -a build.log
           make -j$(nproc --all) $MAKE_ARGS Image Image.gz dtbs 2>&1 | tee -a build.log
 
-          echo "=== 3. Image.gz-dtb Yapilandırma Kontrolü ve Birleştirme ===" | tee -a build.log
+          echo "=== 3. Vendor Modulleri Derleme (WiFi/BT/Hotspot icin gerekli) ===" | tee -a build.log
+          make -j$(nproc --all) $MAKE_ARGS modules 2>&1 | tee -a build.log
+          mkdir -p out/modules_install
+          make $MAKE_ARGS INSTALL_MOD_PATH=out/modules_install modules_install 2>&1 | tee -a build.log
+
+          echo "=== 4. Vermagic Dogrulama ===" | tee -a build.log
+          VERMAGIC=$(strings out/vmlinux 2>/dev/null | grep -m1 "vermagic=" || true)
+          echo "Build vermagic: $VERMAGIC" | tee -a build.log
+          echo "Beklenen (stok) LOCALVERSION: ${{ github.event.inputs.stock_localversion }}" | tee -a build.log
+
+          echo "=== 5. Image.gz-dtb Yapilandirma Kontrolu ve Birlestirme ===" | tee -a build.log
           if [ ! -f out/arch/arm64/boot/Image.gz-dtb ]; then
-            echo "[INFO] Image.gz-dtb doğrudan bulunamadı, DTB birleştirme işlemi uygulanıyor..." | tee -a build.log
+            echo "[INFO] Image.gz-dtb dogrudan bulunamadi, DTB birlestirme islemi uygulaniyor..." | tee -a build.log
             cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/mediatek/*.dtb > out/arch/arm64/boot/Image.gz-dtb 2>/dev/null || true
           fi
 
@@ -449,5 +463,5 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image.gz
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
+            kernel-source/out/modules_install/**
           if-no-files-found: warn
-          
