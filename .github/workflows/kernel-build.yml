@@ -66,6 +66,15 @@ jobs:
           echo "--- Merge Sonrasi connectivity Dizini Icerigi ---"
           find kernel-source/drivers/misc/mediatek/connectivity -maxdepth 3 -type f -name "*.c" 2>/dev/null | wc -l
 
+          echo "--- wmt_drv Modul (.ko) Uretimi Icin Kconfig Sembolu Taranıyor ---"
+          # wmt_drv.ko vendor partitionda kapali kaynakli, CRC'si stok kernele
+          # kilitli. Onu asla tutturamayiz. Tek cozum: ayni surucuyu KENDI
+          # kernelimizden tristate modul (=m) olarak derleyip kendi .ko'muzu
+          # uretmek. Bunun icin dogru CONFIG_ sembolunu bulmamiz lazim.
+          grep -rn "tristate" kernel-source/drivers/misc/mediatek/connectivity/ 2>/dev/null | grep -i "wmt\|combo\|conn" | tee wmt_kconfig_candidates.log || echo "[UYARI] tristate wmt/combo sembolu bulunamadi, dosya bulunamadi." | tee -a wmt_kconfig_candidates.log
+          echo "--- wmt_drv icin obj-y / obj-m Referanslari ---"
+          grep -rn "wmt_drv\|wmt-drv" kernel-source/drivers/misc/mediatek/connectivity/ --include=Makefile --include=Kbuild 2>/dev/null | tee -a wmt_kconfig_candidates.log || true
+
       - name: Apply Hotfixes for Compiler & Header Errors
         working-directory: kernel-source
         run: |
