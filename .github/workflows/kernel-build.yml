@@ -1,16 +1,16 @@
-name: Biloba-R-OSS 4.14.186 Topological Virtual Mali-G810 Build (Ubuntu 20.04)
+name: Biloba-R-OSS 4.14.186 Build (No Virtual GPU, Ubuntu 20.04)
 
 on:
   workflow_dispatch:
     inputs:
       stock_localversion:
-        description: 'Orijinal stok kernelin LOCALVERSION eki (uname -r ciktisindaki "4.14.186" disinda kalan kisim, ornegin -perf). Vendor WiFi/BT .ko modullerinin bu kernel ile ayni vermagic e sahip olmasi icin kullanilir.'
+        description: 'Orijinal stok kernelin LOCALVERSION eki (uname -r ciktisindaki "4.14.186" disinda kalan kisim). Vendor WiFi/BT .ko modullerinin bu kernel ile ayni vermagic e sahip olmasi icin kullanilir.'
         required: false
-        default: '-perf'
+        default: '-perf-g831600317'
 
 jobs:
   build:
-    name: Build Kernel with Topological Virtual GPU
+    name: Build Kernel (No Virtual GPU)
     runs-on: ubuntu-latest
     container:
       image: ubuntu:20.04
@@ -254,159 +254,6 @@ jobs:
             echo "mtk_typedefs.h include edildi."
           fi
 
-      - name: Inject Virtual Mali-G810 Topology & Mapper Drivers
-        working-directory: kernel-source
-        run: |
-          echo "--- Topological Virtual Mali-G810 C Dosyalari Olusturuluyor ---"
-          mkdir -p drivers/misc/virtual_mali/
-
-          cat << 'EOF' > drivers/misc/virtual_mali/virtual_mali.h
-          #ifndef __VIRTUAL_MALI_H
-          #define __VIRTUAL_MALI_H
-
-          #include <linux/types.h>
-
-          struct mali_g810_topology_specs {
-              char architecture[32];
-              char model_name[32];
-              u32 core_count;
-              u32 execution_engines;
-              u32 max_clock_mhz;
-              u32 l2_cache_size_kb;
-              u32 bus_width_bits;
-              u32 vulkan_api_version;
-              u32 opengl_es_version;
-              u64 virt_vram_bytes;
-          };
-
-          struct mali_g810_topology_specs* get_mali_g810_specs(void);
-
-          #endif
-          EOF
-
-          cat << 'EOF' > drivers/misc/virtual_mali/virtual_mali_g810.c
-          #include <linux/module.h>
-          #include <linux/platform_device.h>
-          #include <linux/slab.h>
-          #include "virtual_mali.h"
-
-          static struct mali_g810_topology_specs g810_specs = {
-              .architecture = "ARM Valhall Architecture",
-              .model_name = "Mali-G810 Topologic vGPU",
-              .core_count = 10,
-              .execution_engines = 32,
-              .max_clock_mhz = 950,
-              .l2_cache_size_kb = 2048,
-              .bus_width_bits = 256,
-              .vulkan_api_version = 0x00403000,
-              .opengl_es_version = 32,
-              .virt_vram_bytes = 2147483648ULL
-          };
-
-          struct mali_g810_topology_specs* get_mali_g810_specs(void) {
-              return &g810_specs;
-          }
-          EXPORT_SYMBOL_GPL(get_mali_g810_specs);
-
-          static int virt_mali_g810_probe(struct platform_device *pdev) {
-              pr_info("[MALI-G810-TOPOLOGY] Donanim Topolojisi Yuklendi.\n");
-              pr_info("[MALI-G810-TOPOLOGY] Cihaz: %s | Mimari: %s\n", g810_specs.model_name, g810_specs.architecture);
-              pr_info("[MALI-G810-TOPOLOGY] Core: %d Cores @ %d MHz | L2 Cache: %d KB\n",
-                      g810_specs.core_count, g810_specs.max_clock_mhz, g810_specs.l2_cache_size_kb);
-              pr_info("[MALI-G810-TOPOLOGY] Desteklenen API: Vulkan 1.3 / OpenGL ES 3.2\n");
-              return 0;
-          }
-
-          static struct platform_driver virt_mali_g810_driver = {
-              .probe = virt_mali_g810_probe,
-              .driver = {
-                  .name = "virt_mali_g810_device",
-                  .owner = THIS_MODULE,
-              },
-          };
-
-          module_platform_driver(virt_mali_g810_driver);
-          MODULE_AUTHOR("Serhat");
-          MODULE_DESCRIPTION("ARM Mali-G810 Hardware Topology Definition");
-          MODULE_LICENSE("GPL");
-          EOF
-
-          cat << 'EOF' > drivers/misc/virtual_mali/virtual_gpu_mapper.c
-          #include <linux/module.h>
-          #include <linux/platform_device.h>
-          #include <linux/miscdevice.h>
-          #include <linux/fs.h>
-          #include <linux/slab.h>
-          #include "virtual_mali.h"
-
-          static int virt_gpu_open(struct inode *inode, struct file *file) {
-              return 0;
-          }
-
-          static int virt_gpu_release(struct inode *inode, struct file *file) {
-              return 0;
-          }
-
-          static const struct file_operations virt_gpu_fops = {
-              .owner = THIS_MODULE,
-              .open = virt_gpu_open,
-              .release = virt_gpu_release,
-          };
-
-          static struct miscdevice virt_mali_misc_dev = {
-              .minor = MISC_DYNAMIC_MINOR,
-              .name = "mali_g810_vgpu",
-              .fops = &virt_gpu_fops,
-          };
-
-          static struct platform_device *vgpu_pdev;
-
-          static int __init virt_gpu_mapper_init(void) {
-              struct mali_g810_topology_specs *specs = get_mali_g810_specs();
-              int ret;
-
-              pr_info("[VGPU-MAPPER] Ikinci Sanal GPU Kayit Ediliyor: %s\n", specs->model_name);
-
-              vgpu_pdev = platform_device_register_simple("virt_mali_g810_device", -1, NULL, 0);
-              if (IS_ERR(vgpu_pdev)) {
-                  pr_err("[VGPU-MAPPER] Platform cihaz kaydi basarisiz!\n");
-                  return PTR_ERR(vgpu_pdev);
-              }
-
-              ret = misc_register(&virt_mali_misc_dev);
-              if (ret) {
-                  pr_err("[VGPU-MAPPER] Misc cihaz tescil edilemedi!\n");
-                  platform_device_unregister(vgpu_pdev);
-                  return ret;
-              }
-
-              pr_info("[VGPU-MAPPER] BASARILI! Ikinci Donanim Sanal GPU Olarak Eklendi: /dev/mali_g810_vgpu\n");
-              return 0;
-          }
-
-          static void __exit virt_gpu_mapper_exit(void) {
-              misc_deregister(&virt_mali_misc_dev);
-              if (vgpu_pdev) {
-                  platform_device_unregister(vgpu_pdev);
-              }
-              pr_info("[VGPU-MAPPER] Ikinci Sanal GPU Kaldirildi.\n");
-          }
-
-          module_init(virt_gpu_mapper_init);
-          module_exit(virt_gpu_mapper_exit);
-          MODULE_AUTHOR("Serhat");
-          MODULE_DESCRIPTION("Topological Virtual GPU Mapper");
-          MODULE_LICENSE("GPL");
-          EOF
-
-          cat << 'EOF' > drivers/misc/virtual_mali/Makefile
-          ccflags-y += -I$(srctree)/drivers/misc/virtual_mali
-          obj-y += virtual_mali_g810.o
-          obj-y += virtual_gpu_mapper.o
-          EOF
-
-          echo "obj-y += virtual_mali/" >> drivers/misc/Makefile
-
       - name: Build Kernel & Device Tree
         working-directory: kernel-source
         shell: bash
@@ -465,3 +312,4 @@ jobs:
             kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
             kernel-source/out/modules_install/**
           if-no-files-found: warn
+          
