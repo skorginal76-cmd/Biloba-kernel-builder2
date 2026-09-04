@@ -192,6 +192,16 @@ jobs:
       - name: Match Stock Kernel Vermagic (Vendor WiFi/BT .ko Uyumlulugu Icin)
         working-directory: kernel-source
         run: |
+          echo "=== KRITIK: '+' Son Ekini Onlemek Icin .scmversion Enjekte Ediliyor ==="
+          # scripts/setlocalversion, CONFIG_LOCALVERSION_AUTO kapali olsa BILE
+          # git working tree'nin "dirty" (commit edilmemis degisiklik) olup
+          # olmadigina git diff-index ile bakar ve dirty ise sonuna "+" ekler.
+          # Biz sed ile kaynagi surekli patch'ledigimiz icin tree hep dirty
+          # kaliyor -> uname -r'a otomatik "+" ekleniyor -> vermagic stok ile
+          # ASLA birebir eslesmiyor. Bos .scmversion dosyasi koyunca script
+          # git kontrolunu tamamen atlar, "+" hic eklenmez.
+          touch .scmversion
+
           echo "=== LOCALVERSION_AUTO Kapatiliyor (Deterministik Surum Stringi) ==="
           sed -i '/CONFIG_LOCALVERSION_AUTO/d' arch/arm64/configs/biloba_defconfig
           echo "# CONFIG_LOCALVERSION_AUTO is not set" >> arch/arm64/configs/biloba_defconfig
@@ -292,8 +302,19 @@ jobs:
           VERMAGIC=$(strings out/vmlinux 2>/dev/null | grep -m1 "vermagic=" || true)
           echo "Build vermagic: $VERMAGIC" | tee -a build.log
           echo "Beklenen (stok) LOCALVERSION: ${{ github.event.inputs.stock_localversion }}" | tee -a build.log
+          if echo "$VERMAGIC" | grep -q '+'; then
+            echo "[HATA] Vermagic hala '+' iceriyor! .scmversion calismadi, tree hala dirty." | tee -a build.log
+          else
+            echo "[OK] Vermagic '+' icermiyor." | tee -a build.log
+          fi
 
-          echo "=== 5. Image.gz-dtb Yapilandirma Kontrolu ve Birlestirme ===" | tee -a build.log
+          echo "=== 5. WiFi/BT/Combo Modul Teshisi ===" | tee -a build.log
+          echo "--- Bu agactan gercekten derlenen WiFi/BT/combo ilgili .ko dosyalari: ---" | tee -a build.log
+          find out/modules_install -iname "*.ko" | grep -iE "wmt|conn|combo|bt|wifi|wlan|fm|gps" | tee -a build.log || \
+            echo "[UYARI] Bu isimlerde HICBIR modul bulunamadi! WiFi/BT surucusu bu acik kaynak agacinda YOK; vendor partitiondaki kapali kaynak (proprietary) .ko olabilir. Bu durumda kernel tarafinda vermagic ne kadar uyusursa uyussun, o .ko'lar bu build'den gelmiyor ve stok kernelin .ko'larini kullanmak zorundasin." | tee -a build.log
+          echo "--- Tum derlenen modul sayisi: $(find out/modules_install -iname '*.ko' | wc -l) ---" | tee -a build.log
+
+          echo "=== 6. Image.gz-dtb Yapilandirma Kontrolu ve Birlestirme ===" | tee -a build.log
           if [ ! -f out/arch/arm64/boot/Image.gz-dtb ]; then
             echo "[INFO] Image.gz-dtb dogrudan bulunamadi, DTB birlestirme islemi uygulaniyor..." | tee -a build.log
             cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/mediatek/*.dtb > out/arch/arm64/boot/Image.gz-dtb 2>/dev/null || true
