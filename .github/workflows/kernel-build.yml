@@ -47,6 +47,25 @@ jobs:
         run: |
           git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
+      - name: Clone & Merge MTK Connectivity Kernel Modules (WiFi/BT/Combo Full Source)
+        run: |
+          echo "=== MTK_kernel_modules (biloba-r-oss) Klonlaniyor ==="
+          # Xiaomi_Kernel_OpenSource'taki drivers/misc/mediatek/connectivity dizini
+          # eksik/stub kaynak iceriyor (bu yuzden onceki build'de WiFi/BT chip'i
+          # tanimiyordu). MTK_kernel_modules reposu ayni dizin agacini tam
+          # (gercek WMT/conninfra/STP surucu) kaynakla saglar. Ayni dizin
+          # yapisini birebir kopyaladigi icin dogrudan uzerine rsync ediyoruz.
+          git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/MTK_kernel_modules.git mtk-kernel-modules
+
+          echo "--- Klonlanan Repo Ust Duzey Yapisi (teshis icin log'a yaziliyor) ---"
+          find mtk-kernel-modules -maxdepth 3 -type d | tee mtk_modules_tree.log
+
+          echo "--- kernel-source Uzerine Birlestiriliyor (mevcut dosyalarin uzerine yazilir) ---"
+          rsync -a --stats mtk-kernel-modules/ kernel-source/ | tee rsync_merge.log
+
+          echo "--- Merge Sonrasi connectivity Dizini Icerigi ---"
+          find kernel-source/drivers/misc/mediatek/connectivity -maxdepth 3 -type f -name "*.c" 2>/dev/null | wc -l
+
       - name: Apply Hotfixes for Compiler & Header Errors
         working-directory: kernel-source
         run: |
