@@ -47,33 +47,26 @@ jobs:
         run: |
           git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git kernel-source
 
-      - name: Clone & Merge MTK Connectivity Kernel Modules (WiFi/BT/Combo Full Source)
+      - name: Clone & Place MTK Connectivity Kernel Modules (WiFi/BT Built-in Source)
         run: |
           echo "=== MTK_kernel_modules (biloba-r-oss) Klonlaniyor ==="
-          # Xiaomi_Kernel_OpenSource'taki drivers/misc/mediatek/connectivity dizini
-          # eksik/stub kaynak iceriyor (bu yuzden onceki build'de WiFi/BT chip'i
-          # tanimiyordu). MTK_kernel_modules reposu ayni dizin agacini tam
-          # (gercek WMT/conninfra/STP surucu) kaynakla saglar. Ayni dizin
-          # yapisini birebir kopyaladigi icin dogrudan uzerine rsync ediyoruz.
-          git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/MTK_kernel_modules.git mtk-kernel-modules
+          git clone --depth=1 -b biloba-r-oss https://github.com/MiCode/MTK_kernel_modules.git mtk-kernel-modules-src
 
-          echo "--- Klonlanan Repo Ust Duzey Yapisi (teshis icin log'a yaziliyor) ---"
-          find mtk-kernel-modules -maxdepth 3 -type d | tee mtk_modules_tree.log
+          echo "--- Kaynak, kernel-source Makefile'inin bekledigi TAM yola yerlestiriliyor ---"
+          # drivers/misc/mediatek/connectivity/Makefile icindeki gercek mantik:
+          #   ABS_PATH_TO_WMT_DRV = $(srctree)/../vendor/mediatek/kernel_modules/connectivity/common
+          # yani kernel-source'un BIR UST dizininde (GITHUB_WORKSPACE/vendor/...)
+          # bekleniyor, kernel-source'un ICINDE degil. Onceki blanket rsync
+          # yanlis yere (kernel-source/connectivity) kopyaliyordu, hicbir etkisi
+          # olmuyordu.
+          mkdir -p vendor/mediatek/kernel_modules
+          rsync -a --stats mtk-kernel-modules-src/ vendor/mediatek/kernel_modules/ | tee rsync_merge.log
 
-          echo "--- kernel-source Uzerine Birlestiriliyor (mevcut dosyalarin uzerine yazilir) ---"
-          rsync -a --stats mtk-kernel-modules/ kernel-source/ | tee rsync_merge.log
-
-          echo "--- Merge Sonrasi connectivity Dizini Icerigi ---"
-          find kernel-source/drivers/misc/mediatek/connectivity -maxdepth 3 -type f -name "*.c" 2>/dev/null | wc -l
-
-          echo "--- wmt_drv Modul (.ko) Uretimi Icin Kconfig Sembolu Taranıyor ---"
-          # wmt_drv.ko vendor partitionda kapali kaynakli, CRC'si stok kernele
-          # kilitli. Onu asla tutturamayiz. Tek cozum: ayni surucuyu KENDI
-          # kernelimizden tristate modul (=m) olarak derleyip kendi .ko'muzu
-          # uretmek. Bunun icin dogru CONFIG_ sembolunu bulmamiz lazim.
-          grep -rn "tristate" kernel-source/drivers/misc/mediatek/connectivity/ 2>/dev/null | grep -i "wmt\|combo\|conn" | tee wmt_kconfig_candidates.log || echo "[UYARI] tristate wmt/combo sembolu bulunamadi, dosya bulunamadi." | tee -a wmt_kconfig_candidates.log
-          echo "--- wmt_drv icin obj-y / obj-m Referanslari ---"
-          grep -rn "wmt_drv\|wmt-drv" kernel-source/drivers/misc/mediatek/connectivity/ --include=Makefile --include=Kbuild 2>/dev/null | tee -a wmt_kconfig_candidates.log || true
+          echo "--- Dogrulama: beklenen alt dizinler mevcut mu? ---"
+          ls -la vendor/mediatek/kernel_modules/connectivity/ | tee mtk_modules_tree.log
+          test -d vendor/mediatek/kernel_modules/connectivity/common && echo "[OK] common/ bulundu"
+          test -d vendor/mediatek/kernel_modules/connectivity/wlan/adaptor && echo "[OK] wlan/adaptor bulundu"
+          test -d vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m && echo "[OK] wlan/core/gen4m bulundu"
 
       - name: Apply Hotfixes for Compiler & Header Errors
         working-directory: kernel-source
@@ -254,6 +247,23 @@ jobs:
           sed -i '/^CONFIG_MODULES=/d' arch/arm64/configs/biloba_defconfig
           echo "CONFIG_MODULES=y" >> arch/arm64/configs/biloba_defconfig
 
+          echo "=== KRITIK: WiFi/BT/Hotspot Icin Built-in Combo Surucusu Aktif Ediliyor ==="
+          # drivers/misc/mediatek/connectivity/Makefile icinde CONFIG_WLAN_DRV_BUILD_IN
+          # varsayilan olarak KAPALI (yorum satirinda). Kapali oldugu surece
+          # wmt_drv/wmt_chrdev_wifi/wlan_drv_gen4m sembolik link + obj-y bloğu
+          # HIC calismiyor -> WiFi/BT stack'i kernelimizde tamamen yok oluyor,
+          # cihaz stok /vendor/lib/modules/wmt_drv.ko'ya (bizim kernelimizle
+          # asla CRC eslesmeyecek olan) bagimli kaliyor. Bunu acarak WiFi/BT'yi
+          # ayri bir .ko olmadan DOGRUDAN vmlinux icine gomuyoruz - boylece
+          # module_layout/vermagic sorunu kokten ortadan kalkiyor.
+          sed -i '/CONFIG_WLAN_DRV_BUILD_IN/d' arch/arm64/configs/biloba_defconfig
+          echo "CONFIG_WLAN_DRV_BUILD_IN=y" >> arch/arm64/configs/biloba_defconfig
+
+          # Chip ve platform zaten stok defconfig'te dogru: CONFIG_MTK_COMBO=y,
+          # CONFIG_MTK_COMBO_CHIP_CONSYS_6768=y, CONFIG_MTK_COMBO_WIFI=y.
+          # Bunlari koruyoruz, sadece bulunduklarini teyit ediyoruz:
+          grep -E "^CONFIG_MTK_COMBO" arch/arm64/configs/biloba_defconfig || echo "[UYARI] CONFIG_MTK_COMBO* satirlari defconfig'te yok, elle eklenmesi gerekebilir."
+
       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
         run: |
@@ -336,6 +346,19 @@ jobs:
             echo "[OK] Vermagic '+' icermiyor." | tee -a build.log
           fi
 
+          echo "=== 4b. WiFi/BT Built-in Derleme Dogrulamasi ===" | tee -a build.log
+          echo "--- Sembolik Link Kontrolu (drivers/misc/mediatek/connectivity altinda) ---" | tee -a build.log
+          ls -la drivers/misc/mediatek/connectivity/wmt_drv drivers/misc/mediatek/connectivity/wmt_chrdev_wifi drivers/misc/mediatek/connectivity/wlan_drv_gen4m 2>&1 | tee -a build.log
+          echo "--- build.log Icinde wmt_drv/wlan_drv_gen4m Derleme Satirlari ---" | tee -a build.log
+          grep -E "wmt_drv/|wlan_drv_gen4m/|wmt_chrdev_wifi/" build.log | tee wmt_build_evidence.log
+          if [ -s wmt_build_evidence.log ]; then
+            echo "[OK] WiFi/BT kaynaklari gercekten derleme surecine girdi." | tee -a build.log
+          else
+            echo "[HATA] WiFi/BT kaynaklari HIC derlenmedi! CONFIG_WLAN_DRV_BUILD_IN veya symlink calismamis olabilir." | tee -a build.log
+          fi
+          echo "--- vmlinux Icinde wmt/wlan Sembol Kontrolu ---" | tee -a build.log
+          nm out/vmlinux 2>/dev/null | grep -iE "wmt_core_tx|wlan_drv_gen4m_init|mtk_wcn_wmt" | tee -a build.log || echo "[UYARI] vmlinux icinde beklenen wmt/wlan sembolleri bulunamadi." | tee -a build.log
+
           echo "=== 5. WiFi/BT/Combo Modul Teshisi ===" | tee -a build.log
           echo "--- Bu agactan gercekten derlenen WiFi/BT/combo ilgili .ko dosyalari: ---" | tee -a build.log
           find out/modules_install -iname "*.ko" | grep -iE "wmt|conn|combo|bt|wifi|wlan|fm|gps" | tee -a build.log || \
@@ -358,7 +381,4 @@ jobs:
             kernel-source/out/arch/arm64/boot/Image
             kernel-source/out/arch/arm64/boot/Image.gz
             kernel-source/out/arch/arm64/boot/Image.gz-dtb
-            kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
-            kernel-source/out/modules_install/**
-          if-no-files-found: warn
-          
+            kernel-source/out/arch/arm64/bo
