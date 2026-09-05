@@ -295,6 +295,26 @@ jobs:
             fi
           done
 
+          echo "=== KRITIK: Makefile'in KENDI unlink+ln-s Mekanizmasi NOTRALIZE Ediliyor ==="
+          # Build sirasinda ayni "symbolic link to..." mesajlari IKINCI KEZ
+          # goruluyor - yani Makefile parse zamaninda kendi $(shell unlink ...)
+          # ve $(shell ln -s ...) satirlarini TEKRAR calistirip bizim dogru
+          # kurdugumuz symlink'lerin USTUNE YAZIYOR (muhtemelen -j paralellik
+          # altinda cakisan bir sekilde). Bizim elle kurdugumuz linkler zaten
+          # dogru ve dogrulandi - Makefile'in kendi mekanizmasini komple
+          # etkisiz hale getiriyoruz ki bir daha ustune yazamasin.
+          sed -i \
+            -e "s|\$(shell unlink \$(srctree)/\$(src)/wmt_drv)|\$(shell true)|" \
+            -e "s|\$(shell unlink \$(srctree)/\$(src)/wmt_chrdev_wifi)|\$(shell true)|" \
+            -e "s|\$(shell unlink \$(srctree)/\$(src)/wlan_drv_gen4m)|\$(shell true)|" \
+            -e "s|\$(shell ln -s \$(ABS_PATH_TO_WMT_DRV)      \$(srctree)/\$(src)/wmt_drv)|\$(shell true)|" \
+            -e "s|\$(shell ln -s \$(ABS_PATH_TO_WLAN_CHR_DRV) \$(srctree)/\$(src)/wmt_chrdev_wifi)|\$(shell true)|" \
+            -e "s|\$(shell ln -s \$(ABS_PATH_TO_WLAN_DRV)     \$(srctree)/\$(src)/wlan_drv_gen4m)|\$(shell true)|" \
+            "$CONN_MK"
+
+          echo "--- Notralize Sonrasi Kontrol (hicbir 'ln -s .../wmt_drv' vs kalmamali) ---"
+          grep -n "ln -s.*wmt_drv\|ln -s.*wlan_drv_gen4m\|ln -s.*wmt_chrdev_wifi" "$CONN_MK" && echo "[HATA] Hala aktif ln -s satiri var, sed eslesmedi!" || echo "[OK] Makefile'in kendi symlink mantigi tamamen notralize edildi."
+
       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
         run: |
