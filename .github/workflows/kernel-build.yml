@@ -247,22 +247,26 @@ jobs:
           sed -i '/^CONFIG_MODULES=/d' arch/arm64/configs/biloba_defconfig
           echo "CONFIG_MODULES=y" >> arch/arm64/configs/biloba_defconfig
 
-          echo "=== KRITIK: WiFi/BT/Hotspot Icin Built-in Combo Surucusu Aktif Ediliyor ==="
-          # drivers/misc/mediatek/connectivity/Makefile icinde CONFIG_WLAN_DRV_BUILD_IN
-          # varsayilan olarak KAPALI (yorum satirinda). Kapali oldugu surece
-          # wmt_drv/wmt_chrdev_wifi/wlan_drv_gen4m sembolik link + obj-y bloğu
-          # HIC calismiyor -> WiFi/BT stack'i kernelimizde tamamen yok oluyor,
-          # cihaz stok /vendor/lib/modules/wmt_drv.ko'ya (bizim kernelimizle
-          # asla CRC eslesmeyecek olan) bagimli kaliyor. Bunu acarak WiFi/BT'yi
-          # ayri bir .ko olmadan DOGRUDAN vmlinux icine gomuyoruz - boylece
-          # module_layout/vermagic sorunu kokten ortadan kalkiyor.
-          sed -i '/CONFIG_WLAN_DRV_BUILD_IN/d' arch/arm64/configs/biloba_defconfig
-          echo "CONFIG_WLAN_DRV_BUILD_IN=y" >> arch/arm64/configs/biloba_defconfig
-
-          # Chip ve platform zaten stok defconfig'te dogru: CONFIG_MTK_COMBO=y,
-          # CONFIG_MTK_COMBO_CHIP_CONSYS_6768=y, CONFIG_MTK_COMBO_WIFI=y.
-          # Bunlari koruyoruz, sadece bulunduklarini teyit ediyoruz:
-          grep -E "^CONFIG_MTK_COMBO" arch/arm64/configs/biloba_defconfig || echo "[UYARI] CONFIG_MTK_COMBO* satirlari defconfig'te yok, elle eklenmesi gerekebilir."
+          echo "=== KRITIK DUZELTME: CONFIG_WLAN_DRV_BUILD_IN Kconfig SEMBOLU DEGIL ==="
+          # Onceki denemede bunu defconfig'e CONFIG_WLAN_DRV_BUILD_IN=y olarak
+          # eklemistim - bu YANLIS. Bu deger Kconfig'de HICBIR YERDE tanimli
+          # degil (dogruladim), sadece connectivity/Makefile icinde YORUMLU
+          # bir "export" satiri olarak duruyor:
+          #   # export CONFIG_WLAN_DRV_BUILD_IN=y
+          # make defconfig, Kconfig'de tanimsiz CONFIG_ satirlarini sessizce
+          # eledigi icin .config'e hic girmiyordu -> symlink blogu hic
+          # calismiyordu. Dogru cozum: bu satiri MAKEFILE ICINDE yorumdan
+          # cikarmak.
+          echo "=== WiFi/BT/Hotspot Icin Built-in Combo Surucusu Aktif Ediliyor (Makefile Patch) ==="
+          CONN_MK="drivers/misc/mediatek/connectivity/Makefile"
+          if grep -q "# export CONFIG_WLAN_DRV_BUILD_IN=y" "$CONN_MK"; then
+            sed -i 's/# export CONFIG_WLAN_DRV_BUILD_IN=y/export CONFIG_WLAN_DRV_BUILD_IN=y/' "$CONN_MK"
+            echo "[OK] CONFIG_WLAN_DRV_BUILD_IN Makefile icinde aktif edildi."
+          else
+            echo "[HATA] Beklenen yorum satiri bulunamadi, Makefile format degismis olabilir!"
+            grep -n "WLAN_DRV_BUILD_IN" "$CONN_MK" || echo "[HATA] WLAN_DRV_BUILD_IN hic gecmiyor $CONN_MK icinde!"
+          fi
+          grep -n "CONFIG_WLAN_DRV_BUILD_IN" "$CONN_MK"
 
       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
@@ -379,6 +383,4 @@ jobs:
           path: |
             kernel-source/build.log
             kernel-source/out/arch/arm64/boot/Image
-            kernel-source/out/arch/arm64/boot/Image.gz
-            kernel-source/out/arch/arm64/boot/Image.gz-dtb
-            kernel-source/out/arch/arm64/bo
+            kernel-source/out/arch/arm64/boot
