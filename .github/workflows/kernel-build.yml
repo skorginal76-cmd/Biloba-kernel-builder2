@@ -268,6 +268,33 @@ jobs:
           fi
           grep -n "CONFIG_WLAN_DRV_BUILD_IN" "$CONN_MK"
 
+          echo "=== KRITIK: Sembolik Linkler ELLE, MUTLAK YOLLA Onceden Olusturuluyor ==="
+          # Onceki denemede Makefile'in kendi "$(shell ln -s ...)" mekanizmasi
+          # calisti (CONFIG_WLAN_DRV_BUILD_IN artik aktif, wildcard kontrolu
+          # gecti) FAKAT '-j$(nproc)' ile paralel build sirasinda Kbuild ayni
+          # connectivity/Makefile'i birden fazla alt-make surecinden ESZAMANLI
+          # okuyup unlink+ln -s adimlarini yarisa sokabiliyor: bir surec link'i
+          # olustururken digeri hemen unlink edip yeniden (bozuk/eksik) olarak
+          # olusturabiliyor. Sonuc: wlan_drv_gen4m/Makefile bulunamiyor.
+          # Cozum: linkleri MUTLAK yolla BIZ once elle kuruyoruz. Makefile
+          # kendi unlink+ln -s'ini yine calistiracak ama zaten AYNI hedefe
+          # isaret ettigi icin zararsiz (idempotent) kaliyor.
+          WS="${GITHUB_WORKSPACE}"
+          CONN_DIR="drivers/misc/mediatek/connectivity"
+          rm -f "$CONN_DIR/wmt_drv" "$CONN_DIR/wmt_chrdev_wifi" "$CONN_DIR/wlan_drv_gen4m"
+          ln -sfn "$WS/vendor/mediatek/kernel_modules/connectivity/common"          "$CONN_DIR/wmt_drv"
+          ln -sfn "$WS/vendor/mediatek/kernel_modules/connectivity/wlan/adaptor"    "$CONN_DIR/wmt_chrdev_wifi"
+          ln -sfn "$WS/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m" "$CONN_DIR/wlan_drv_gen4m"
+
+          echo "--- Elle Kurulan Symlink Dogrulamasi ---"
+          for l in wmt_drv wmt_chrdev_wifi wlan_drv_gen4m; do
+            if [ -e "$CONN_DIR/$l/Makefile" ]; then
+              echo "[OK] $l -> $(readlink -f $CONN_DIR/$l) (Makefile mevcut)"
+            else
+              echo "[HATA] $l linki kirik veya Makefile eksik: $(readlink -f $CONN_DIR/$l 2>/dev/null || echo 'COZULEMEDI')"
+            fi
+          done
+
       - name: Fix Missing DRV_Reg32 / DRV_WriteReg32 Symbols
         working-directory: kernel-source
         run: |
@@ -383,4 +410,8 @@ jobs:
           path: |
             kernel-source/build.log
             kernel-source/out/arch/arm64/boot/Image
-            kernel-source/out/arch/arm64/boot
+            kernel-source/out/arch/arm64/boot/Image.gz
+            kernel-source/out/arch/arm64/boot/Image.gz-dtb
+            kernel-source/out/arch/arm64/boot/dts/mediatek/*.dtb
+            kernel-source/out/modules_install/**
+          if-no-files-found: warn
